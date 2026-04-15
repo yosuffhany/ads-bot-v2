@@ -21,7 +21,7 @@ if not TELEGRAM_TOKEN:
 TEAM_IDS = [7205504412, 1285453461, 932647337]  # Nsayedb, Aliaa, Yosuff
 
 # Accounts to watch for balance alerts
-WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe'}
+WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'showpink'}
 
 # Alert thresholds
 THRESHOLDS = [1000, 500]
