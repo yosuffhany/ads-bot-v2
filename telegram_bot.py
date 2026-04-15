@@ -11,10 +11,13 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-load_dotenv()
+load_dotenv()  # local only, ignored on Railway
 
-TELEGRAM_TOKEN   = os.getenv('TELEGRAM_BOT_TOKEN')
-LONG_LIVED_TOKEN = os.getenv('LONG_LIVED_TOKEN')
+TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_BOT_TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
+LONG_LIVED_TOKEN = os.environ.get('LONG_LIVED_TOKEN')   or os.getenv('LONG_LIVED_TOKEN')
+
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
 ACCOUNTS = {
     'mall':  {'id': 'act_2001687506868513', 'label': 'Mall'},
