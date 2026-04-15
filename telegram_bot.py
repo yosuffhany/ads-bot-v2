@@ -110,12 +110,19 @@ def get_balance(account_key):
     acc = ACCOUNTS[account_key]
     r = requests.get(
         f"https://graph.facebook.com/v19.0/{acc['id']}",
-        params={'access_token': LONG_LIVED_TOKEN, 'fields': 'funding_source_details,currency'}
+        params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details'}
     )
     d = r.json()
-    display = d.get('funding_source_details', {}).get('display_string', 'N/A')
+    currency = d.get('currency', '')
+    display = d.get('funding_source_details', {}).get('display_string', '')
+    # If display_string has a balance amount like "Available balance (EGP36,618.23)" use it
     match = re.search(r'\((.+?)\)', display)
-    amount = match.group(1) if match else display
+    if match:
+        amount = match.group(1)
+    else:
+        # Fallback to balance field (in cents)
+        raw = int(d.get('balance', 0))
+        amount = f"{currency} {raw / 100:,.2f}"
     return f"{acc['label']}: {amount}"
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
