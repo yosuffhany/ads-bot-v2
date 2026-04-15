@@ -6,7 +6,7 @@ Ads Telegram Bot
 import os, re, requests
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
 
 load_dotenv()
 
@@ -118,8 +118,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مش فاهم 🤔\n\nجرب:\n• رصيد كل — عرض الأكونتات\n• ابعت اسم الأكونت أو رقمه"
     )
 
+async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Your ID: `{update.message.from_user.id}`", parse_mode='Markdown')
+
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler('myid', myid))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Bot running...")
     app.run_polling()
