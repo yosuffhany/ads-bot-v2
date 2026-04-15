@@ -29,7 +29,7 @@ ACCOUNTS = {
     'sofy':         {'id': 'act_650311242463923',  'label': 'Sofy'},
     'bison':        {'id': 'act_465578978509965',  'label': 'Bison Ads'},
     'effect1':      {'id': 'act_5394586653914394', 'label': 'Effect ADV 01'},
-    'eladel':       {'id': 'act_276905741576386',  'label': 'Al Adel'},
+    'eladel':       {'id': 'act_1392109118185589',  'label': 'Al Adel'},
     'konafa':       {'id': 'act_631525635606460',  'label': 'كنافة ستى'},
     'fawry1':       {'id': 'act_648289100485879',  'label': 'Effect Fawry 1'},
     'padel':        {'id': 'act_1289017779213803', 'label': 'Play Padel'},
