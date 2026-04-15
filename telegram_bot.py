@@ -26,24 +26,39 @@ WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'showpink'}
 # Alert thresholds
 THRESHOLDS = [1000, 500]
 
-# Track sent alerts to avoid repeating: {acc_key: {threshold: True}}
-sent_alerts = {}
+# Persist sent alerts to file so restarts don't resend
+ALERTS_FILE = '/tmp/sent_alerts.json'
+
+def load_alerts():
+    try:
+        import json
+        with open(ALERTS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_alerts(data):
+    import json
+    with open(ALERTS_FILE, 'w') as f:
+        json.dump(data, f)
+
+sent_alerts = load_alerts()
 
 # Funny Egyptian messages per threshold
 MESSAGES_1000 = [
-    "⚠️ يا تيم! رصيد {name} بدأ يتضاوق — فضل 1000 جنيه بس، شحنوا قبل ما يتقفل علينا 😅",
-    "🚨 آدي {name} بيصرخ من جوه — رصيده وصل 1000 جنيه، متسيبوهوش يجوع 🥲",
-    "😬 يا جماعة {name} بدأ يبعت إشارات استغاثة — الرصيد 1000 جنيه، حد يشحن؟",
-    "💸 {name} بيبص على رصيده وبيعيط — 1000 جنيه بس فاضلين، التيم فين؟! 😂",
-    "🔔 تنبيه من {name}: الرصيد وصل 1000 جنيه، يعني لسه بخير بس متبقوش تعملوا أبطال 😄",
+    "⚠️ يا تيم! رصيد {name} بدأ يتضاوق — فضل {balance} بس، شحنوا قبل ما يتقفل علينا 😅",
+    "🚨 آدي {name} بيصرخ من جوه — رصيده {balance}، متسيبوهوش يجوع 🥲",
+    "😬 يا جماعة {name} بدأ يبعت إشارات استغاثة — الرصيد {balance}، حد يشحن؟",
+    "💸 {name} بيبص على رصيده وبيعيط — {balance} بس فاضلين، التيم فين؟! 😂",
+    "🔔 تنبيه من {name}: الرصيد {balance}، يعني لسه بخير بس متبقوش تعملوا أبطال 😄",
 ]
 
 MESSAGES_500 = [
-    "💀 يا جماعة {name} على وشك الإغماء — رصيده 500 جنيه بس، أنقذوه بسرعة!! 😭",
-    "🆘 SOS من {name}!! الرصيد 500 جنيه ومش هيفضل طويل، شحنوا دلوقتي أو ودعوا الكامبينز 😂",
-    "😱 {name} بيودع الكامبينز — 500 جنيه بس وخلاص!! في حد صاحي؟ شحنوا بسرعة!!",
-    "🚒 الإسعاف جه لـ {name}!! رصيده 500 جنيه — إيه ده؟! شحنوا قبل ما يتوفى 😭😂",
-    "⛽ {name} بنزينه على الآخر — 500 جنيه ومشيناها، يلا يا تيم اشحنوا اشحنوا!! 🏃",
+    "💀 يا جماعة {name} على وشك الإغماء — رصيده {balance} بس، أنقذوه بسرعة!! 😭",
+    "🆘 SOS من {name}!! الرصيد {balance} ومش هيفضل طويل، شحنوا دلوقتي أو ودعوا الكامبينز 😂",
+    "😱 {name} بيودع الكامبينز — {balance} بس وخلاص!! في حد صاحي؟ شحنوا بسرعة!!",
+    "🚒 الإسعاف جه لـ {name}!! رصيده {balance} — إيه ده؟! شحنوا قبل ما يتوفى 😭😂",
+    "⛽ {name} بنزينه على الآخر — {balance} ومشيناها، يلا يا تيم اشحنوا اشحنوا!! 🏃",
 ]
 
 # All Ad Motion accounts
@@ -152,9 +167,10 @@ async def check_balances(context):
         for threshold in THRESHOLDS:
             alert_key = str(threshold)
             if value <= threshold and not sent_alerts[key].get(alert_key):
-                # Pick random message
                 msgs = MESSAGES_1000 if threshold == 1000 else MESSAGES_500
-                msg  = random.choice(msgs).format(name=acc['label'])
+                # Format balance display
+                balance_display = f"{value:,.0f} جنيه"
+                msg = random.choice(msgs).format(name=acc['label'], balance=balance_display)
 
                 for chat_id in TEAM_IDS:
                     try:
@@ -162,10 +178,12 @@ async def check_balances(context):
                     except Exception:
                         pass
                 sent_alerts[key][alert_key] = True
+                save_alerts(sent_alerts)
 
             # Reset alert if balance goes back up (after recharge)
             elif value > threshold and sent_alerts[key].get(alert_key):
                 sent_alerts[key][alert_key] = False
+                save_alerts(sent_alerts)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or '').strip()
