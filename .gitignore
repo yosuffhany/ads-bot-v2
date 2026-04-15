@@ -1,0 +1,5 @@
+.env
+google_credentials.json
+*.pptx
+__pycache__/
+*.pyc
