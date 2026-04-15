@@ -2,10 +2,11 @@
 Ads Telegram Bot
 - "رصيد كل"  → list of all Ad Motion accounts
 - account name or number → get balance
+- Auto alerts when watched accounts drop below 1000 or 500
 """
-import os, re, requests
+import os, re, random, requests
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
 
 load_dotenv()
@@ -16,7 +17,36 @@ LONG_LIVED_TOKEN = os.environ.get('LONG_LIVED_TOKEN')   or os.getenv('LONG_LIVED
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
-# All Ad Motion accounts (owned + client)
+# Team IDs to receive alerts
+TEAM_IDS = [7205504412, 1285453461, 932647337]  # Nsayedb, Aliaa, Yosuff
+
+# Accounts to watch for balance alerts
+WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe'}
+
+# Alert thresholds
+THRESHOLDS = [1000, 500]
+
+# Track sent alerts to avoid repeating: {acc_key: {threshold: True}}
+sent_alerts = {}
+
+# Funny Egyptian messages per threshold
+MESSAGES_1000 = [
+    "⚠️ يا تيم! رصيد {name} بدأ يتضاوق — فضل 1000 جنيه بس، شحنوا قبل ما يتقفل علينا 😅",
+    "🚨 آدي {name} بيصرخ من جوه — رصيده وصل 1000 جنيه، متسيبوهوش يجوع 🥲",
+    "😬 يا جماعة {name} بدأ يبعت إشارات استغاثة — الرصيد 1000 جنيه، حد يشحن؟",
+    "💸 {name} بيبص على رصيده وبيعيط — 1000 جنيه بس فاضلين، التيم فين؟! 😂",
+    "🔔 تنبيه من {name}: الرصيد وصل 1000 جنيه، يعني لسه بخير بس متبقوش تعملوا أبطال 😄",
+]
+
+MESSAGES_500 = [
+    "💀 يا جماعة {name} على وشك الإغماء — رصيده 500 جنيه بس، أنقذوه بسرعة!! 😭",
+    "🆘 SOS من {name}!! الرصيد 500 جنيه ومش هيفضل طويل، شحنوا دلوقتي أو ودعوا الكامبينز 😂",
+    "😱 {name} بيودع الكامبينز — 500 جنيه بس وخلاص!! في حد صاحي؟ شحنوا بسرعة!!",
+    "🚒 الإسعاف جه لـ {name}!! رصيده 500 جنيه — إيه ده؟! شحنوا قبل ما يتوفى 😭😂",
+    "⛽ {name} بنزينه على الآخر — 500 جنيه ومشيناها، يلا يا تيم اشحنوا اشحنوا!! 🏃",
+]
+
+# All Ad Motion accounts
 ACCOUNTS = [
     {'key': 'totti',        'id': 'act_3046772235501325', 'label': 'Totti Gallery'},
     {'key': 'maspipe',      'id': 'act_1774284989787459', 'label': 'Mas-Pipe'},
@@ -31,7 +61,7 @@ ACCOUNTS = [
     {'key': 'essam',        'id': 'act_325431983464353',  'label': 'Mohamed Essam'},
     {'key': 'eladel',       'id': 'act_1392109118185589', 'label': 'Al Adel'},
     {'key': 'sua',          'id': 'act_925588948913339',  'label': 'Effect SUA'},
-    {'key': 'mall',         'id': 'act_2001687506868513', 'label': 'Mall (Chromakey)'},
+    {'key': 'mall',         'id': 'act_2001687506868513', 'label': 'Mall'},
     {'key': 'kemet',        'id': 'act_345674018149436',  'label': 'Kemet'},
     {'key': 'divine',       'id': 'act_434106209039266',  'label': 'Divine by JJ'},
     {'key': 'diesel',       'id': 'act_674712451469435',  'label': 'Diesel Caravan'},
@@ -57,38 +87,46 @@ ACCOUNTS = [
     {'key': 'looklook',     'id': 'act_879890704620098',  'label': 'Look Look'},
 ]
 
-# Build lookup by key and label
-ACCOUNTS_BY_KEY   = {a['key']: a for a in ACCOUNTS}
 ACCOUNTS_BY_INDEX = {i+1: a for i, a in enumerate(ACCOUNTS)}
 
 def find_account(text):
-    """Find account by name substring (case-insensitive) or number"""
     text = text.strip()
-    # by number
     if text.isdigit():
         return ACCOUNTS_BY_INDEX.get(int(text))
-    # by label
     tl = text.lower()
     for a in ACCOUNTS:
         if tl in a['label'].lower() or a['key'] in tl:
             return a
     return None
 
-def get_balance(acc):
+def get_balance_raw(acc):
+    """Returns (display_str, numeric_value)"""
     r = requests.get(
         f"https://graph.facebook.com/v19.0/{acc['id']}",
         params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details'}
     )
     d = r.json()
     if 'error' in d:
-        return f"{acc['label']}: ❌ خطأ"
+        return f"{acc['label']}: ❌ خطأ", None
     currency = d.get('currency', '')
     display  = d.get('funding_source_details', {}).get('display_string', '')
     match    = re.search(r'\((.+?)\)', display)
     if match:
-        return f"{acc['label']}: {match.group(1)}"
+        amount_str = match.group(1)
+        # Extract numeric value
+        num = re.sub(r'[^\d.]', '', amount_str.replace(',', ''))
+        try:
+            value = float(num)
+        except Exception:
+            value = None
+        return f"{acc['label']}: {amount_str}", value
     raw = int(d.get('balance', 0))
-    return f"{acc['label']}: {currency} {raw/100:,.2f}"
+    value = raw / 100
+    return f"{acc['label']}: {currency} {value:,.2f}", value
+
+def get_balance(acc):
+    text, _ = get_balance_raw(acc)
+    return text
 
 def accounts_list():
     lines = ["الأكونتات المتاحة:\n"]
@@ -97,23 +135,52 @@ def accounts_list():
     lines.append("\nابعت الاسم أو الرقم عشان تعرف الرصيد")
     return '\n'.join(lines)
 
+async def check_balances(context):
+    """Check watched accounts and send alerts if below thresholds"""
+    bot = context.bot
+    watch_accounts = [a for a in ACCOUNTS if a['key'] in WATCH_KEYS]
+
+    for acc in watch_accounts:
+        _, value = get_balance_raw(acc)
+        if value is None:
+            continue
+
+        key = acc['key']
+        if key not in sent_alerts:
+            sent_alerts[key] = {}
+
+        for threshold in THRESHOLDS:
+            alert_key = str(threshold)
+            if value <= threshold and not sent_alerts[key].get(alert_key):
+                # Pick random message
+                msgs = MESSAGES_1000 if threshold == 1000 else MESSAGES_500
+                msg  = random.choice(msgs).format(name=acc['label'])
+
+                for chat_id in TEAM_IDS:
+                    try:
+                        await bot.send_message(chat_id=chat_id, text=msg)
+                    except Exception:
+                        pass
+                sent_alerts[key][alert_key] = True
+
+            # Reset alert if balance goes back up (after recharge)
+            elif value > threshold and sent_alerts[key].get(alert_key):
+                sent_alerts[key][alert_key] = False
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or '').strip()
     tl   = text.lower()
 
-    # "رصيد كل" or "كل" → show list
     if any(w in tl for w in ['رصيد كل', 'كل', 'all', 'الكل', 'list', 'قائمة']):
         await update.message.reply_text(accounts_list())
         return
 
-    # Try to find account
     acc = find_account(text)
     if acc:
         await update.message.reply_text("جاري الجلب...")
         await update.message.reply_text(get_balance(acc))
         return
 
-    # Unknown
     await update.message.reply_text(
         "مش فاهم 🤔\n\nجرب:\n• رصيد كل — عرض الأكونتات\n• ابعت اسم الأكونت أو رقمه"
     )
@@ -125,7 +192,11 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('myid', myid))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Bot running...")
+
+    # Check balances every 2 hours
+    app.job_queue.run_repeating(check_balances, interval=7200, first=60)
+
+    print("Bot running with balance alerts...")
     app.run_polling()
 
 if __name__ == '__main__':
