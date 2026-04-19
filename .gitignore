@@ -3,3 +3,4 @@ google_credentials.json
 *.pptx
 __pycache__/
 *.pyc
+.streamlit/secrets.toml
