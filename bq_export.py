@@ -44,19 +44,22 @@ CAMPAIGN_SCHEMA = [
     bigquery.SchemaField('date_updated',  'DATE'),
     bigquery.SchemaField('account',       'STRING'),
     bigquery.SchemaField('campaign_id',   'STRING'),
-    bigquery.SchemaField('campaign_name', 'STRING'),
-    bigquery.SchemaField('objective',     'STRING'),
-    bigquery.SchemaField('status',        'STRING'),
+    bigquery.SchemaField('campaign_name',  'STRING'),
+    bigquery.SchemaField('objective',      'STRING'),
+    bigquery.SchemaField('status',         'STRING'),
+    bigquery.SchemaField('created_time',   'TIMESTAMP'),
     bigquery.SchemaField('spend',         'FLOAT'),
     bigquery.SchemaField('impressions',   'INTEGER'),
     bigquery.SchemaField('reach',         'INTEGER'),
     bigquery.SchemaField('clicks',        'INTEGER'),
     bigquery.SchemaField('link_clicks',   'INTEGER'),
     bigquery.SchemaField('cpm',           'FLOAT'),
-    bigquery.SchemaField('results',       'INTEGER'),
-    bigquery.SchemaField('result_label',  'STRING'),
-    bigquery.SchemaField('cpr',           'FLOAT'),
-    bigquery.SchemaField('purchases',     'INTEGER'),
+    bigquery.SchemaField('results',           'INTEGER'),
+    bigquery.SchemaField('result_label',      'STRING'),
+    bigquery.SchemaField('cpr',               'FLOAT'),
+    bigquery.SchemaField('purchases',         'INTEGER'),
+    bigquery.SchemaField('messages',          'INTEGER'),
+    bigquery.SchemaField('cost_per_message',  'FLOAT'),
 ]
 
 ADSET_SCHEMA = [
@@ -73,10 +76,12 @@ ADSET_SCHEMA = [
     bigquery.SchemaField('clicks',        'INTEGER'),
     bigquery.SchemaField('link_clicks',   'INTEGER'),
     bigquery.SchemaField('cpm',           'FLOAT'),
-    bigquery.SchemaField('results',       'INTEGER'),
-    bigquery.SchemaField('result_label',  'STRING'),
-    bigquery.SchemaField('cpr',           'FLOAT'),
-    bigquery.SchemaField('purchases',     'INTEGER'),
+    bigquery.SchemaField('results',           'INTEGER'),
+    bigquery.SchemaField('result_label',      'STRING'),
+    bigquery.SchemaField('cpr',               'FLOAT'),
+    bigquery.SchemaField('purchases',         'INTEGER'),
+    bigquery.SchemaField('messages',          'INTEGER'),
+    bigquery.SchemaField('cost_per_message',  'FLOAT'),
 ]
 
 BALANCE_SCHEMA = [
@@ -97,6 +102,27 @@ DAILY_SCHEMA = [
     bigquery.SchemaField('purchases',   'INTEGER'),
 ]
 
+CAMPAIGN_DAILY_SCHEMA = [
+    bigquery.SchemaField('date',             'DATE'),
+    bigquery.SchemaField('account',          'STRING'),
+    bigquery.SchemaField('campaign_id',      'STRING'),
+    bigquery.SchemaField('campaign_name',    'STRING'),
+    bigquery.SchemaField('objective',        'STRING'),
+    bigquery.SchemaField('status',           'STRING'),
+    bigquery.SchemaField('spend',            'FLOAT'),
+    bigquery.SchemaField('impressions',      'INTEGER'),
+    bigquery.SchemaField('reach',            'INTEGER'),
+    bigquery.SchemaField('clicks',           'INTEGER'),
+    bigquery.SchemaField('link_clicks',      'INTEGER'),
+    bigquery.SchemaField('cpm',              'FLOAT'),
+    bigquery.SchemaField('results',          'INTEGER'),
+    bigquery.SchemaField('result_label',     'STRING'),
+    bigquery.SchemaField('cpr',              'FLOAT'),
+    bigquery.SchemaField('purchases',        'INTEGER'),
+    bigquery.SchemaField('messages',         'INTEGER'),
+    bigquery.SchemaField('cost_per_message', 'FLOAT'),
+]
+
 ADS_SCHEMA = [
     bigquery.SchemaField('date_updated',   'DATE'),
     bigquery.SchemaField('account',        'STRING'),
@@ -114,10 +140,12 @@ ADS_SCHEMA = [
     bigquery.SchemaField('clicks',         'INTEGER'),
     bigquery.SchemaField('link_clicks',    'INTEGER'),
     bigquery.SchemaField('cpm',            'FLOAT'),
-    bigquery.SchemaField('results',        'INTEGER'),
-    bigquery.SchemaField('result_label',   'STRING'),
-    bigquery.SchemaField('cpr',            'FLOAT'),
-    bigquery.SchemaField('purchases',      'INTEGER'),
+    bigquery.SchemaField('results',          'INTEGER'),
+    bigquery.SchemaField('result_label',     'STRING'),
+    bigquery.SchemaField('cpr',              'FLOAT'),
+    bigquery.SchemaField('purchases',        'INTEGER'),
+    bigquery.SchemaField('messages',         'INTEGER'),
+    bigquery.SchemaField('cost_per_message', 'FLOAT'),
 ]
 
 # ── META API HELPERS ──────────────────────────────────────────────────────────
@@ -139,6 +167,11 @@ def parse_insights(ins, objective_raw):
         if a['action_type'] in PURCHASE_ACTIONS
     )
 
+    msg_action = next((a for a in actions if a['action_type'] == 'onsite_conversion.messaging_conversation_started_7d'), None)
+    messages   = int(float(msg_action['value'])) if msg_action else 0
+    msg_cost   = next((c for c in costs if c['action_type'] == 'onsite_conversion.messaging_conversation_started_7d'), None)
+    cost_per_message = round(float(msg_cost['value']) if msg_cost else (spend / messages if messages else 0), 2)
+
     if obj in AWARENESS_OBJECTIVES:
         result, result_label = reach, 'Reach'
         cpr = round(spend / (reach / 1000), 2) if reach else 0.0
@@ -152,12 +185,60 @@ def parse_insights(ins, objective_raw):
                 cpr    = round(float(cost['value']) if cost else (spend / result if result else 0), 2)
                 break
 
+    # Detect actual conversion type from actions
+    action_types = {a['action_type'] for a in actions}
+
+    has_messages    = messages > 0
+    has_leads       = any(a in action_types for a in ['lead', 'onsite_conversion.lead_grouped'])
+    has_purchases   = purchases > 0
+    has_page_likes  = 'like' in action_types
+    has_video_views = 'video_view' in action_types
+    has_post_engage = 'post_engagement' in action_types
+    has_app_install = 'app_install' in action_types
+
+    if obj == 'OUTCOME_AWARENESS':
+        objective_label = 'Awareness'
+    elif obj in ('OUTCOME_REACH', 'REACH'):
+        objective_label = 'Reach'
+    elif obj == 'OUTCOME_TRAFFIC':
+        if has_messages:
+            objective_label = 'Messages (Traffic)'
+        else:
+            objective_label = 'Traffic'
+    elif obj == 'OUTCOME_ENGAGEMENT':
+        if has_messages:
+            objective_label = 'Messages'
+        elif has_page_likes:
+            objective_label = 'Page Likes'
+        elif has_video_views:
+            objective_label = 'Video Views'
+        elif has_post_engage:
+            objective_label = 'Post Engagement'
+        else:
+            objective_label = 'Engagement'
+    elif obj == 'OUTCOME_LEADS':
+        if has_messages:
+            objective_label = 'Messages (Leads)'
+        else:
+            objective_label = 'Leads'
+    elif obj == 'OUTCOME_SALES':
+        if has_messages:
+            objective_label = 'Messages (Sales)'
+        elif has_purchases:
+            objective_label = 'Sales'
+        else:
+            objective_label = 'Conversions'
+    elif obj == 'OUTCOME_APP_PROMOTION':
+        objective_label = 'App Installs'
+    else:
+        objective_label = obj.replace('OUTCOME_', '').title()
+
     return {
-        'objective': obj.replace('OUTCOME_', '').title(),
+        'objective': objective_label,
         'result': result, 'result_label': result_label, 'cpr': cpr,
         'spend': spend, 'cpm': cpm, 'impressions': impressions,
         'clicks': clicks, 'reach': reach, 'link_clicks': link_clicks,
-        'purchases': purchases,
+        'purchases': purchases, 'messages': messages, 'cost_per_message': cost_per_message,
     }
 
 def fetch_campaigns(account_id):
@@ -166,7 +247,7 @@ def fetch_campaigns(account_id):
         f'https://graph.facebook.com/v19.0/{account_id}/campaigns',
         params={
             'access_token': TOKEN,
-            'fields': f'id,name,objective,status,insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
+            'fields': f'id,name,objective,status,created_time,insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
             'limit': 200,
         }
     )
@@ -175,28 +256,67 @@ def fetch_campaigns(account_id):
     for c in r.json().get('data', []):
         ins  = (c.get('insights', {}).get('data') or [{}])[0]
         data = parse_insights(ins, c.get('objective', ''))
-        data.update({'id': c['id'], 'name': c['name'], 'status': c.get('status', '')})
+        data.update({'id': c['id'], 'name': c['name'], 'status': c.get('status', ''), 'created_time': c.get('created_time', '')})
         out.append(data)
     return sorted(out, key=lambda x: x['spend'], reverse=True)
 
 def fetch_adsets(campaign_id, obj_raw):
     tr = f'{{"since":"{SINCE}","until":"{UNTIL}"}}'
-    r  = requests.get(
-        f'https://graph.facebook.com/v19.0/{campaign_id}/adsets',
-        params={
-            'access_token': TOKEN,
-            'fields': f'id,name,status,insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
-            'limit': 200,
-        }
-    )
-    r.raise_for_status()
-    out = []
-    for a in r.json().get('data', []):
-        ins  = (a.get('insights', {}).get('data') or [{}])[0]
-        data = parse_insights(ins, obj_raw)
-        data.update({'id': a['id'], 'name': a['name'], 'status': a.get('status', '')})
-        out.append(data)
-    return sorted(out, key=lambda x: x['spend'], reverse=True)
+    try:
+        r  = requests.get(
+            f'https://graph.facebook.com/v19.0/{campaign_id}/adsets',
+            params={
+                'access_token': TOKEN,
+                'fields': f'id,name,status,insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
+                'limit': 200,
+            }
+        )
+        r.raise_for_status()
+        out = []
+        for a in r.json().get('data', []):
+            ins  = (a.get('insights', {}).get('data') or [{}])[0]
+            data = parse_insights(ins, obj_raw)
+            data.update({'id': a['id'], 'name': a['name'], 'status': a.get('status', '')})
+            out.append(data)
+        return sorted(out, key=lambda x: x['spend'], reverse=True)
+    except Exception as e:
+        print(f'  ⚠ skipping adsets for {campaign_id}: {e}')
+        return []
+
+def fetch_campaigns_daily(account_id):
+    try:
+        r = requests.get(
+            f'https://graph.facebook.com/v19.0/{account_id}/insights',
+            params={
+                'access_token': TOKEN,
+                'time_range': f'{{"since":"{SINCE}","until":"{UNTIL}"}}',
+                'time_increment': 1,
+                'level': 'campaign',
+                'fields': f'date_start,campaign_id,campaign_name,objective,{INSIGHTS_FIELDS}',
+                'limit': 500,
+            }
+        )
+        r.raise_for_status()
+        rows = []
+        for row in r.json().get('data', []):
+            ins  = parse_insights(row, row.get('objective', ''))
+            rows.append({
+                'date':         row['date_start'],
+                'campaign_id':  row.get('campaign_id', ''),
+                'campaign_name': row.get('campaign_name', ''),
+                'objective':    ins['objective'],
+                'status':       '',
+                'spend':        ins['spend'], 'impressions': ins['impressions'],
+                'reach':        ins['reach'], 'clicks': ins['clicks'],
+                'link_clicks':  ins['link_clicks'], 'cpm': ins['cpm'],
+                'results':      ins['result'], 'result_label': ins['result_label'],
+                'cpr':          ins['cpr'], 'purchases': ins['purchases'],
+                'messages':     ins['messages'], 'cost_per_message': ins['cost_per_message'],
+            })
+        return rows
+    except Exception as e:
+        print(f'  ⚠ fetch_campaigns_daily error: {e}')
+        return []
 
 def fetch_ads(adset_id, obj_raw):
     tr = f'{{"since":"{SINCE}","until":"{UNTIL}"}}'
@@ -297,26 +417,32 @@ def main():
     client = get_bq_client()
     ensure_dataset(client)
 
-    campaigns_rows = []
-    adsets_rows    = []
-    ads_rows       = []
-    balances_rows  = []
-    daily_rows     = []
+    campaigns_rows       = []
+    campaigns_daily_rows = []
+    adsets_rows          = []
+    ads_rows             = []
+    balances_rows        = []
+    daily_rows           = []
 
     for acc_name, acc_id in ACCOUNTS.items():
         print(f'Fetching {acc_name}...')
+
+        for row in fetch_campaigns_daily(acc_id):
+            row['account'] = acc_name
+            campaigns_daily_rows.append(row)
 
         campaigns = fetch_campaigns(acc_id)
         for c in campaigns:
             campaigns_rows.append({
                 'date_updated': TODAY, 'account': acc_name,
                 'campaign_id': c['id'], 'campaign_name': c['name'],
-                'objective': c['objective'], 'status': c['status'],
+                'objective': c['objective'], 'status': c['status'], 'created_time': c.get('created_time', ''),
                 'spend': c['spend'], 'impressions': c['impressions'],
                 'reach': c['reach'], 'clicks': c['clicks'],
                 'link_clicks': c['link_clicks'], 'cpm': c['cpm'],
                 'results': c['result'], 'result_label': c['result_label'],
                 'cpr': c['cpr'], 'purchases': c['purchases'],
+                'messages': c['messages'], 'cost_per_message': c['cost_per_message'],
             })
 
             adsets = fetch_adsets(c['id'], c['objective'])
@@ -331,6 +457,7 @@ def main():
                     'link_clicks': a['link_clicks'], 'cpm': a['cpm'],
                     'results': a['result'], 'result_label': a['result_label'],
                     'cpr': a['cpr'], 'purchases': a['purchases'],
+                    'messages': a['messages'], 'cost_per_message': a['cost_per_message'],
                 })
 
                 ads = fetch_ads(a['id'], c['objective'])
@@ -346,6 +473,7 @@ def main():
                         'link_clicks': ad['link_clicks'], 'cpm': ad['cpm'],
                         'results': ad['result'], 'result_label': ad['result_label'],
                         'cpr': ad['cpr'], 'purchases': ad['purchases'],
+                        'messages': ad['messages'], 'cost_per_message': ad['cost_per_message'],
                     })
 
         balance, currency, display = fetch_balance(acc_id)
@@ -364,6 +492,9 @@ def main():
 
     load_table(client, 'campaigns', CAMPAIGN_SCHEMA, campaigns_rows)
     print(f'  ✓ campaigns: {len(campaigns_rows)} rows')
+
+    load_table(client, 'campaigns_daily', CAMPAIGN_DAILY_SCHEMA, campaigns_daily_rows)
+    print(f'  ✓ campaigns_daily: {len(campaigns_daily_rows)} rows')
 
     load_table(client, 'ads', ADS_SCHEMA, ads_rows)
     print(f'  ✓ ads: {len(ads_rows)} rows')
