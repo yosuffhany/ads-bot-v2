@@ -1,0 +1,31 @@
+name: Hourly Meta Ads → BigQuery Export
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # كل ساعة
+  workflow_dispatch:        # تشغيل يدوي من GitHub لو محتاج
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv gspread google-auth google-cloud-bigquery
+
+      - name: Write credentials file
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
+
+      - name: Run export
+        env:
+          LONG_LIVED_TOKEN: ${{ secrets.LONG_LIVED_TOKEN }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          BQ_DATASET: meta_ads
+          GOOGLE_CREDENTIALS_FILE: google_credentials.json
+        run: python bq_export.py
