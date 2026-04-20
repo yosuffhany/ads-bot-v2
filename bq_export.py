@@ -1,7 +1,7 @@
 """
 Meta Ads → BigQuery exporter
-Tables: campaigns | adsets | balances | daily
-Data is APPENDED daily (full history preserved).
+Tables: unified | balances | daily
+unified has level=campaign/adset/ad rows, all with actual date field.
 """
 import os, requests
 from datetime import date, timedelta
@@ -40,50 +40,6 @@ TODAY = str(date.today())
 
 # ── SCHEMAS ───────────────────────────────────────────────────────────────────
 
-CAMPAIGN_SCHEMA = [
-    bigquery.SchemaField('date_updated',  'DATE'),
-    bigquery.SchemaField('account',       'STRING'),
-    bigquery.SchemaField('campaign_id',   'STRING'),
-    bigquery.SchemaField('campaign_name',  'STRING'),
-    bigquery.SchemaField('objective',      'STRING'),
-    bigquery.SchemaField('status',         'STRING'),
-    bigquery.SchemaField('created_time',   'TIMESTAMP'),
-    bigquery.SchemaField('spend',         'FLOAT'),
-    bigquery.SchemaField('impressions',   'INTEGER'),
-    bigquery.SchemaField('reach',         'INTEGER'),
-    bigquery.SchemaField('clicks',        'INTEGER'),
-    bigquery.SchemaField('link_clicks',   'INTEGER'),
-    bigquery.SchemaField('cpm',           'FLOAT'),
-    bigquery.SchemaField('results',           'INTEGER'),
-    bigquery.SchemaField('result_label',      'STRING'),
-    bigquery.SchemaField('cpr',               'FLOAT'),
-    bigquery.SchemaField('purchases',         'INTEGER'),
-    bigquery.SchemaField('messages',          'INTEGER'),
-    bigquery.SchemaField('cost_per_message',  'FLOAT'),
-]
-
-ADSET_SCHEMA = [
-    bigquery.SchemaField('date_updated',  'DATE'),
-    bigquery.SchemaField('account',       'STRING'),
-    bigquery.SchemaField('campaign_name', 'STRING'),
-    bigquery.SchemaField('campaign_id',   'STRING'),
-    bigquery.SchemaField('adset_id',      'STRING'),
-    bigquery.SchemaField('adset_name',    'STRING'),
-    bigquery.SchemaField('status',        'STRING'),
-    bigquery.SchemaField('spend',         'FLOAT'),
-    bigquery.SchemaField('impressions',   'INTEGER'),
-    bigquery.SchemaField('reach',         'INTEGER'),
-    bigquery.SchemaField('clicks',        'INTEGER'),
-    bigquery.SchemaField('link_clicks',   'INTEGER'),
-    bigquery.SchemaField('cpm',           'FLOAT'),
-    bigquery.SchemaField('results',           'INTEGER'),
-    bigquery.SchemaField('result_label',      'STRING'),
-    bigquery.SchemaField('cpr',               'FLOAT'),
-    bigquery.SchemaField('purchases',         'INTEGER'),
-    bigquery.SchemaField('messages',          'INTEGER'),
-    bigquery.SchemaField('cost_per_message',  'FLOAT'),
-]
-
 BALANCE_SCHEMA = [
     bigquery.SchemaField('date_updated', 'DATE'),
     bigquery.SchemaField('account',      'STRING'),
@@ -100,27 +56,6 @@ DAILY_SCHEMA = [
     bigquery.SchemaField('reach',       'INTEGER'),
     bigquery.SchemaField('link_clicks', 'INTEGER'),
     bigquery.SchemaField('purchases',   'INTEGER'),
-]
-
-CAMPAIGN_DAILY_SCHEMA = [
-    bigquery.SchemaField('date',             'DATE'),
-    bigquery.SchemaField('account',          'STRING'),
-    bigquery.SchemaField('campaign_id',      'STRING'),
-    bigquery.SchemaField('campaign_name',    'STRING'),
-    bigquery.SchemaField('objective',        'STRING'),
-    bigquery.SchemaField('status',           'STRING'),
-    bigquery.SchemaField('spend',            'FLOAT'),
-    bigquery.SchemaField('impressions',      'INTEGER'),
-    bigquery.SchemaField('reach',            'INTEGER'),
-    bigquery.SchemaField('clicks',           'INTEGER'),
-    bigquery.SchemaField('link_clicks',      'INTEGER'),
-    bigquery.SchemaField('cpm',              'FLOAT'),
-    bigquery.SchemaField('results',          'INTEGER'),
-    bigquery.SchemaField('result_label',     'STRING'),
-    bigquery.SchemaField('cpr',              'FLOAT'),
-    bigquery.SchemaField('purchases',        'INTEGER'),
-    bigquery.SchemaField('messages',         'INTEGER'),
-    bigquery.SchemaField('cost_per_message', 'FLOAT'),
 ]
 
 UNIFIED_SCHEMA = [
@@ -145,31 +80,6 @@ UNIFIED_SCHEMA = [
     bigquery.SchemaField('clicks',           'INTEGER'),
     bigquery.SchemaField('link_clicks',      'INTEGER'),
     bigquery.SchemaField('cpm',              'FLOAT'),
-    bigquery.SchemaField('results',          'INTEGER'),
-    bigquery.SchemaField('result_label',     'STRING'),
-    bigquery.SchemaField('cpr',              'FLOAT'),
-    bigquery.SchemaField('purchases',        'INTEGER'),
-    bigquery.SchemaField('messages',         'INTEGER'),
-    bigquery.SchemaField('cost_per_message', 'FLOAT'),
-]
-
-ADS_SCHEMA = [
-    bigquery.SchemaField('date_updated',   'DATE'),
-    bigquery.SchemaField('account',        'STRING'),
-    bigquery.SchemaField('campaign_name',  'STRING'),
-    bigquery.SchemaField('campaign_id',    'STRING'),
-    bigquery.SchemaField('adset_name',     'STRING'),
-    bigquery.SchemaField('adset_id',       'STRING'),
-    bigquery.SchemaField('ad_id',          'STRING'),
-    bigquery.SchemaField('ad_name',        'STRING'),
-    bigquery.SchemaField('status',         'STRING'),
-    bigquery.SchemaField('thumbnail_url',  'STRING'),
-    bigquery.SchemaField('spend',          'FLOAT'),
-    bigquery.SchemaField('impressions',    'INTEGER'),
-    bigquery.SchemaField('reach',          'INTEGER'),
-    bigquery.SchemaField('clicks',         'INTEGER'),
-    bigquery.SchemaField('link_clicks',    'INTEGER'),
-    bigquery.SchemaField('cpm',            'FLOAT'),
     bigquery.SchemaField('results',          'INTEGER'),
     bigquery.SchemaField('result_label',     'STRING'),
     bigquery.SchemaField('cpr',              'FLOAT'),
@@ -273,24 +183,29 @@ def parse_insights(ins, objective_raw):
 
 def fetch_campaigns(account_id):
     tr = f'{{"since":"{SINCE}","until":"{UNTIL}"}}'
-    r  = requests.get(
-        f'https://graph.facebook.com/v19.0/{account_id}/campaigns',
-        params={
-            'access_token': TOKEN,
-            'fields': f'id,name,objective,status,created_time,insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
-            'limit': 200,
-        }
-    )
-    r.raise_for_status()
-    out = []
-    for c in r.json().get('data', []):
-        ins  = (c.get('insights', {}).get('data') or [{}])[0]
-        data = parse_insights(ins, c.get('objective', ''))
-        ct = c.get('created_time', '')
-        if ct: ct = ct[:19].replace('T', ' ')  # 2026-01-06T01:40:27+0200 → 2026-01-06 01:40:27
-        data.update({'id': c['id'], 'name': c['name'], 'status': c.get('status', ''), 'created_time': ct})
-        out.append(data)
-    return sorted(out, key=lambda x: x['spend'], reverse=True)
+    try:
+        r  = requests.get(
+            f'https://graph.facebook.com/v19.0/{account_id}/campaigns',
+            params={
+                'access_token': TOKEN,
+                'fields': f'id,name,objective,status,created_time,insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
+                'limit': 200,
+            }
+        )
+        r.raise_for_status()
+        out = []
+        for c in r.json().get('data', []):
+            ins  = (c.get('insights', {}).get('data') or [{}])[0]
+            data = parse_insights(ins, c.get('objective', ''))
+            ct = c.get('created_time', '')
+            if ct: ct = ct[:19].replace('T', ' ')
+            data.update({'id': c['id'], 'name': c['name'], 'status': c.get('status', ''),
+                         'created_time': ct, 'objective_raw': c.get('objective', '')})
+            out.append(data)
+        return sorted(out, key=lambda x: x['spend'], reverse=True)
+    except Exception as e:
+        print(f'  ! skipping campaigns for {account_id}: {e}')
+        return []
 
 def fetch_adsets(campaign_id, obj_raw):
     tr = f'{{"since":"{SINCE}","until":"{UNTIL}"}}'
@@ -314,7 +229,7 @@ def fetch_adsets(campaign_id, obj_raw):
             out.append(data)
         return sorted(out, key=lambda x: x['spend'], reverse=True)
     except Exception as e:
-        print(f'  ⚠ skipping adsets for {campaign_id}: {e}')
+        print(f'  ! skipping adsets for {campaign_id}: {e}')
         return []
 
 def fetch_campaigns_daily(account_id):
@@ -349,7 +264,7 @@ def fetch_campaigns_daily(account_id):
             })
         return rows
     except Exception as e:
-        print(f'  ⚠ fetch_campaigns_daily error: {e}')
+        print(f'  ! fetch_campaigns_daily error: {e}')
         return []
 
 def fetch_adsets_daily(account_id):
@@ -387,7 +302,7 @@ def fetch_adsets_daily(account_id):
             })
         return rows
     except Exception as e:
-        print(f'  ⚠ fetch_adsets_daily error: {e}')
+        print(f'  ! fetch_adsets_daily error: {e}')
         return []
 
 def fetch_ads(adset_id, obj_raw):
@@ -485,140 +400,66 @@ def load_table(client, table_name, schema, rows):
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
+def _unified_row(level, acc_name, row, c=None, a=None, ad=None, status_map=None):
+    """Build a unified table row for any level."""
+    base = {
+        'date': row.get('date', TODAY), 'date_updated': TODAY, 'account': acc_name,
+        'level': level,
+        'campaign_id':     row.get('campaign_id', c['id'] if c else ''),
+        'campaign_name':   row.get('campaign_name', c['name'] if c else ''),
+        'campaign_status': (status_map or {}).get(row.get('campaign_id', c['id'] if c else ''), c['status'] if c else ''),
+        'objective':       row.get('objective', c['objective'] if c else ''),
+        'adset_id':        row.get('adset_id', a['id'] if a else ''),
+        'adset_name':      row.get('adset_name', a['name'] if a else ''),
+        'adset_status':    a['status'] if a else '',
+        'ad_id':           ad['id'] if ad else '',
+        'ad_name':         ad['name'] if ad else '',
+        'ad_status':       ad['status'] if ad else '',
+        'thumbnail_url':   ad['thumbnail_url'] if ad else '',
+    }
+    src = ad or row
+    base.update({
+        'spend': src.get('spend', 0), 'impressions': src.get('impressions', 0),
+        'reach': src.get('reach', 0), 'clicks': src.get('clicks', 0),
+        'link_clicks': src.get('link_clicks', 0), 'cpm': src.get('cpm', 0),
+        'results': src.get('results', src.get('result', 0)),
+        'result_label': src.get('result_label', 'Results'),
+        'cpr': src.get('cpr', 0), 'purchases': src.get('purchases', 0),
+        'messages': src.get('messages', 0), 'cost_per_message': src.get('cost_per_message', 0),
+    })
+    return base
+
+
 def main():
     client = get_bq_client()
     ensure_dataset(client)
 
-    campaigns_rows       = []
-    campaigns_daily_rows = []
-    adsets_rows          = []
-    ads_rows             = []
-    unified_rows         = []
-    balances_rows        = []
-    daily_rows           = []
+    unified_rows  = []
+    balances_rows = []
+    daily_rows    = []
 
     for acc_name, acc_id in ACCOUNTS.items():
         print(f'Fetching {acc_name}...')
 
-        campaigns = fetch_campaigns(acc_id)
+        # Need campaign list for status and to iterate adsets→ads
+        campaigns  = fetch_campaigns(acc_id)
         status_map = {c['id']: c['status'] for c in campaigns}
 
-        # Add daily campaign rows to unified (responds to date filter)
+        # Campaign rows: daily (date-responsive)
         for row in fetch_campaigns_daily(acc_id):
-            row['account'] = acc_name
-            row['status']  = status_map.get(row.get('campaign_id', ''), '')
-            unified_rows.append({
-                'date': row['date'], 'date_updated': TODAY, 'account': acc_name,
-                'level': 'campaign',
-                'campaign_id': row['campaign_id'], 'campaign_name': row['campaign_name'],
-                'campaign_status': row['status'], 'objective': row['objective'],
-                'adset_id': '', 'adset_name': '', 'adset_status': '',
-                'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
-                'spend': row['spend'], 'impressions': row['impressions'],
-                'reach': row['reach'], 'clicks': row['clicks'],
-                'link_clicks': row['link_clicks'], 'cpm': row['cpm'],
-                'results': row['results'], 'result_label': row['result_label'],
-                'cpr': row['cpr'], 'purchases': row['purchases'],
-                'messages': row['messages'], 'cost_per_message': row['cost_per_message'],
-            })
+            unified_rows.append(_unified_row('campaign', acc_name, row, status_map=status_map))
 
-        # campaigns_daily table
-        for row in fetch_campaigns_daily(acc_id):
-            row['account'] = acc_name
-            row['status']  = status_map.get(row.get('campaign_id', ''), '')
-            campaigns_daily_rows.append(row)
-
-        # Add daily adset rows to unified (responds to date filter)
+        # Adset rows: daily (date-responsive)
         for row in fetch_adsets_daily(acc_id):
-            unified_rows.append({
-                'date': row['date'], 'date_updated': TODAY, 'account': acc_name,
-                'level': 'adset',
-                'campaign_id': row['campaign_id'], 'campaign_name': row['campaign_name'],
-                'campaign_status': status_map.get(row['campaign_id'], ''),
-                'objective': row['objective'],
-                'adset_id': row['adset_id'], 'adset_name': row['adset_name'], 'adset_status': '',
-                'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
-                'spend': row['spend'], 'impressions': row['impressions'],
-                'reach': row['reach'], 'clicks': row['clicks'],
-                'link_clicks': row['link_clicks'], 'cpm': row['cpm'],
-                'results': row['results'], 'result_label': row['result_label'],
-                'cpr': row['cpr'], 'purchases': row['purchases'],
-                'messages': row['messages'], 'cost_per_message': row['cost_per_message'],
-            })
+            unified_rows.append(_unified_row('adset', acc_name, row, status_map=status_map))
 
+        # Ad rows: aggregated over SINCE→UNTIL (date=TODAY)
         for c in campaigns:
-            campaigns_rows.append({
-                'date_updated': TODAY, 'account': acc_name,
-                'campaign_id': c['id'], 'campaign_name': c['name'],
-                'objective': c['objective'], 'status': c['status'], 'created_time': c.get('created_time', ''),
-                'spend': c['spend'], 'impressions': c['impressions'],
-                'reach': c['reach'], 'clicks': c['clicks'],
-                'link_clicks': c['link_clicks'], 'cpm': c['cpm'],
-                'results': c['result'], 'result_label': c['result_label'],
-                'cpr': c['cpr'], 'purchases': c['purchases'],
-                'messages': c['messages'], 'cost_per_message': c['cost_per_message'],
-            })
-
-            adsets = fetch_adsets(c['id'], c['objective'])
+            adsets = fetch_adsets(c['id'], c['objective_raw'])
             for a in adsets:
-                adsets_rows.append({
-                    'date_updated': TODAY, 'account': acc_name,
-                    'campaign_name': c['name'], 'campaign_id': c['id'],
-                    'adset_id': a['id'], 'adset_name': a['name'],
-                    'status': a['status'],
-                    'spend': a['spend'], 'impressions': a['impressions'],
-                    'reach': a['reach'], 'clicks': a['clicks'],
-                    'link_clicks': a['link_clicks'], 'cpm': a['cpm'],
-                    'results': a['result'], 'result_label': a['result_label'],
-                    'cpr': a['cpr'], 'purchases': a['purchases'],
-                    'messages': a['messages'], 'cost_per_message': a['cost_per_message'],
-                })
-
-                ads = fetch_ads(a['id'], c['objective'])
+                ads = fetch_ads(a['id'], c['objective_raw'])
                 for ad in ads:
-                    ads_rows.append({
-                        'date_updated': TODAY, 'account': acc_name,
-                        'campaign_name': c['name'], 'campaign_id': c['id'],
-                        'adset_name': a['name'], 'adset_id': a['id'],
-                        'ad_id': ad['id'], 'ad_name': ad['name'],
-                        'status': ad['status'], 'thumbnail_url': ad['thumbnail_url'],
-                        'spend': ad['spend'], 'impressions': ad['impressions'],
-                        'reach': ad['reach'], 'clicks': ad['clicks'],
-                        'link_clicks': ad['link_clicks'], 'cpm': ad['cpm'],
-                        'results': ad['result'], 'result_label': ad['result_label'],
-                        'cpr': ad['cpr'], 'purchases': ad['purchases'],
-                        'messages': ad['messages'], 'cost_per_message': ad['cost_per_message'],
-                    })
-                    unified_rows.append({
-                        'date': TODAY, 'date_updated': TODAY, 'account': acc_name,
-                        'level': 'ad',
-                        'campaign_id': c['id'], 'campaign_name': c['name'], 'campaign_status': c['status'],
-                        'objective': c['objective'],
-                        'adset_id': a['id'], 'adset_name': a['name'], 'adset_status': a['status'],
-                        'ad_id': ad['id'], 'ad_name': ad['name'], 'ad_status': ad['status'],
-                        'thumbnail_url': ad['thumbnail_url'],
-                        'spend': ad['spend'], 'impressions': ad['impressions'],
-                        'reach': ad['reach'], 'clicks': ad['clicks'],
-                        'link_clicks': ad['link_clicks'], 'cpm': ad['cpm'],
-                        'results': ad['result'], 'result_label': ad['result_label'],
-                        'cpr': ad['cpr'], 'purchases': ad['purchases'],
-                        'messages': ad['messages'], 'cost_per_message': ad['cost_per_message'],
-                    })
-
-                unified_rows.append({
-                    'date': TODAY, 'date_updated': TODAY, 'account': acc_name,
-                    'level': 'adset',
-                    'campaign_id': c['id'], 'campaign_name': c['name'], 'campaign_status': c['status'],
-                    'objective': c['objective'],
-                    'adset_id': a['id'], 'adset_name': a['name'], 'adset_status': a['status'],
-                    'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
-                    'spend': a['spend'], 'impressions': a['impressions'],
-                    'reach': a['reach'], 'clicks': a['clicks'],
-                    'link_clicks': a['link_clicks'], 'cpm': a['cpm'],
-                    'results': a['result'], 'result_label': a['result_label'],
-                    'cpr': a['cpr'], 'purchases': a['purchases'],
-                    'messages': a['messages'], 'cost_per_message': a['cost_per_message'],
-                })
+                    unified_rows.append(_unified_row('ad', acc_name, {'date': TODAY}, c=c, a=a, ad=ad))
 
         balance, currency, display = fetch_balance(acc_id)
         balances_rows.append({
@@ -634,28 +475,16 @@ def main():
                 'purchases': row['purchases'],
             })
 
-    load_table(client, 'campaigns', CAMPAIGN_SCHEMA, campaigns_rows)
-    print(f'  ✓ campaigns: {len(campaigns_rows)} rows')
-
     load_table(client, 'unified', UNIFIED_SCHEMA, unified_rows)
-    print(f'  ✓ unified: {len(unified_rows)} rows')
-
-    load_table(client, 'campaigns_daily', CAMPAIGN_DAILY_SCHEMA, campaigns_daily_rows)
-    print(f'  ✓ campaigns_daily: {len(campaigns_daily_rows)} rows')
-
-    load_table(client, 'ads', ADS_SCHEMA, ads_rows)
-    print(f'  ✓ ads: {len(ads_rows)} rows')
-
-    load_table(client, 'adsets', ADSET_SCHEMA, adsets_rows)
-    print(f'  ✓ adsets: {len(adsets_rows)} rows')
+    print(f'  OK unified: {len(unified_rows)} rows')
 
     load_table(client, 'balances', BALANCE_SCHEMA, balances_rows)
-    print(f'  ✓ balances: {len(balances_rows)} rows')
+    print(f'  OK balances: {len(balances_rows)} rows')
 
     load_table(client, 'daily', DAILY_SCHEMA, daily_rows)
-    print(f'  ✓ daily: {len(daily_rows)} rows')
+    print(f'  OK daily: {len(daily_rows)} rows')
 
-    print('\nDone! Connect Looker Studio → BigQuery → meta_ads dataset.')
+    print('\nDone! unified=%d balances=%d daily=%d' % (len(unified_rows), len(balances_rows), len(daily_rows)))
 
 if __name__ == '__main__':
     main()
