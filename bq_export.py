@@ -124,6 +124,7 @@ CAMPAIGN_DAILY_SCHEMA = [
 ]
 
 UNIFIED_SCHEMA = [
+    bigquery.SchemaField('date',             'DATE'),
     bigquery.SchemaField('date_updated',     'DATE'),
     bigquery.SchemaField('account',          'STRING'),
     bigquery.SchemaField('level',            'STRING'),   # campaign / adset / ad
@@ -305,6 +306,8 @@ def fetch_adsets(campaign_id, obj_raw):
         r.raise_for_status()
         out = []
         for a in r.json().get('data', []):
+            if not a.get('name', '').strip():
+                continue
             ins  = (a.get('insights', {}).get('data') or [{}])[0]
             data = parse_insights(ins, obj_raw)
             data.update({'id': a['id'], 'name': a['name'], 'status': a.get('status', '')})
@@ -347,6 +350,44 @@ def fetch_campaigns_daily(account_id):
         return rows
     except Exception as e:
         print(f'  ⚠ fetch_campaigns_daily error: {e}')
+        return []
+
+def fetch_adsets_daily(account_id):
+    try:
+        r = requests.get(
+            f'https://graph.facebook.com/v19.0/{account_id}/insights',
+            params={
+                'access_token': TOKEN,
+                'time_range': f'{{"since":"{SINCE}","until":"{UNTIL}"}}',
+                'time_increment': 1,
+                'level': 'adset',
+                'fields': f'date_start,campaign_id,campaign_name,adset_id,adset_name,objective,{INSIGHTS_FIELDS}',
+                'limit': 500,
+            }
+        )
+        r.raise_for_status()
+        rows = []
+        for row in r.json().get('data', []):
+            if not row.get('adset_name', '').strip():
+                continue
+            ins = parse_insights(row, row.get('objective', ''))
+            rows.append({
+                'date':          row['date_start'],
+                'campaign_id':   row.get('campaign_id', ''),
+                'campaign_name': row.get('campaign_name', ''),
+                'adset_id':      row.get('adset_id', ''),
+                'adset_name':    row.get('adset_name', ''),
+                'objective':     ins['objective'],
+                'spend':         ins['spend'], 'impressions': ins['impressions'],
+                'reach':         ins['reach'], 'clicks': ins['clicks'],
+                'link_clicks':   ins['link_clicks'], 'cpm': ins['cpm'],
+                'results':       ins['result'], 'result_label': ins['result_label'],
+                'cpr':           ins['cpr'], 'purchases': ins['purchases'],
+                'messages':      ins['messages'], 'cost_per_message': ins['cost_per_message'],
+            })
+        return rows
+    except Exception as e:
+        print(f'  ⚠ fetch_adsets_daily error: {e}')
         return []
 
 def fetch_ads(adset_id, obj_raw):
@@ -460,28 +501,50 @@ def main():
         print(f'Fetching {acc_name}...')
 
         campaigns = fetch_campaigns(acc_id)
-        for c in campaigns:
+        status_map = {c['id']: c['status'] for c in campaigns}
+
+        # Add daily campaign rows to unified (responds to date filter)
+        for row in fetch_campaigns_daily(acc_id):
+            row['account'] = acc_name
+            row['status']  = status_map.get(row.get('campaign_id', ''), '')
             unified_rows.append({
-                'date_updated': TODAY, 'account': acc_name,
+                'date': row['date'], 'date_updated': TODAY, 'account': acc_name,
                 'level': 'campaign',
-                'campaign_id': c['id'], 'campaign_name': c['name'], 'campaign_status': c['status'],
-                'objective': c['objective'],
+                'campaign_id': row['campaign_id'], 'campaign_name': row['campaign_name'],
+                'campaign_status': row['status'], 'objective': row['objective'],
                 'adset_id': '', 'adset_name': '', 'adset_status': '',
                 'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
-                'spend': c['spend'], 'impressions': c['impressions'],
-                'reach': c['reach'], 'clicks': c['clicks'],
-                'link_clicks': c['link_clicks'], 'cpm': c['cpm'],
-                'results': c['result'], 'result_label': c['result_label'],
-                'cpr': c['cpr'], 'purchases': c['purchases'],
-                'messages': c['messages'], 'cost_per_message': c['cost_per_message'],
+                'spend': row['spend'], 'impressions': row['impressions'],
+                'reach': row['reach'], 'clicks': row['clicks'],
+                'link_clicks': row['link_clicks'], 'cpm': row['cpm'],
+                'results': row['results'], 'result_label': row['result_label'],
+                'cpr': row['cpr'], 'purchases': row['purchases'],
+                'messages': row['messages'], 'cost_per_message': row['cost_per_message'],
             })
 
-        # Build status map from campaigns for daily rows
-        status_map = {c['id']: c['status'] for c in campaigns}
+        # campaigns_daily table
         for row in fetch_campaigns_daily(acc_id):
             row['account'] = acc_name
             row['status']  = status_map.get(row.get('campaign_id', ''), '')
             campaigns_daily_rows.append(row)
+
+        # Add daily adset rows to unified (responds to date filter)
+        for row in fetch_adsets_daily(acc_id):
+            unified_rows.append({
+                'date': row['date'], 'date_updated': TODAY, 'account': acc_name,
+                'level': 'adset',
+                'campaign_id': row['campaign_id'], 'campaign_name': row['campaign_name'],
+                'campaign_status': status_map.get(row['campaign_id'], ''),
+                'objective': row['objective'],
+                'adset_id': row['adset_id'], 'adset_name': row['adset_name'], 'adset_status': '',
+                'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
+                'spend': row['spend'], 'impressions': row['impressions'],
+                'reach': row['reach'], 'clicks': row['clicks'],
+                'link_clicks': row['link_clicks'], 'cpm': row['cpm'],
+                'results': row['results'], 'result_label': row['result_label'],
+                'cpr': row['cpr'], 'purchases': row['purchases'],
+                'messages': row['messages'], 'cost_per_message': row['cost_per_message'],
+            })
 
         for c in campaigns:
             campaigns_rows.append({
@@ -527,7 +590,7 @@ def main():
                         'messages': ad['messages'], 'cost_per_message': ad['cost_per_message'],
                     })
                     unified_rows.append({
-                        'date_updated': TODAY, 'account': acc_name,
+                        'date': TODAY, 'date_updated': TODAY, 'account': acc_name,
                         'level': 'ad',
                         'campaign_id': c['id'], 'campaign_name': c['name'], 'campaign_status': c['status'],
                         'objective': c['objective'],
@@ -543,7 +606,7 @@ def main():
                     })
 
                 unified_rows.append({
-                    'date_updated': TODAY, 'account': acc_name,
+                    'date': TODAY, 'date_updated': TODAY, 'account': acc_name,
                     'level': 'adset',
                     'campaign_id': c['id'], 'campaign_name': c['name'], 'campaign_status': c['status'],
                     'objective': c['objective'],
