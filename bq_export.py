@@ -123,6 +123,35 @@ CAMPAIGN_DAILY_SCHEMA = [
     bigquery.SchemaField('cost_per_message', 'FLOAT'),
 ]
 
+UNIFIED_SCHEMA = [
+    bigquery.SchemaField('date_updated',     'DATE'),
+    bigquery.SchemaField('account',          'STRING'),
+    bigquery.SchemaField('level',            'STRING'),   # campaign / adset / ad
+    bigquery.SchemaField('campaign_id',      'STRING'),
+    bigquery.SchemaField('campaign_name',    'STRING'),
+    bigquery.SchemaField('campaign_status',  'STRING'),
+    bigquery.SchemaField('objective',        'STRING'),
+    bigquery.SchemaField('adset_id',         'STRING'),
+    bigquery.SchemaField('adset_name',       'STRING'),
+    bigquery.SchemaField('adset_status',     'STRING'),
+    bigquery.SchemaField('ad_id',            'STRING'),
+    bigquery.SchemaField('ad_name',          'STRING'),
+    bigquery.SchemaField('ad_status',        'STRING'),
+    bigquery.SchemaField('thumbnail_url',    'STRING'),
+    bigquery.SchemaField('spend',            'FLOAT'),
+    bigquery.SchemaField('impressions',      'INTEGER'),
+    bigquery.SchemaField('reach',            'INTEGER'),
+    bigquery.SchemaField('clicks',           'INTEGER'),
+    bigquery.SchemaField('link_clicks',      'INTEGER'),
+    bigquery.SchemaField('cpm',              'FLOAT'),
+    bigquery.SchemaField('results',          'INTEGER'),
+    bigquery.SchemaField('result_label',     'STRING'),
+    bigquery.SchemaField('cpr',              'FLOAT'),
+    bigquery.SchemaField('purchases',        'INTEGER'),
+    bigquery.SchemaField('messages',         'INTEGER'),
+    bigquery.SchemaField('cost_per_message', 'FLOAT'),
+]
+
 ADS_SCHEMA = [
     bigquery.SchemaField('date_updated',   'DATE'),
     bigquery.SchemaField('account',        'STRING'),
@@ -423,17 +452,37 @@ def main():
     campaigns_daily_rows = []
     adsets_rows          = []
     ads_rows             = []
+    unified_rows         = []
     balances_rows        = []
     daily_rows           = []
 
     for acc_name, acc_id in ACCOUNTS.items():
         print(f'Fetching {acc_name}...')
 
+        campaigns = fetch_campaigns(acc_id)
+        for c in campaigns:
+            unified_rows.append({
+                'date_updated': TODAY, 'account': acc_name,
+                'level': 'campaign',
+                'campaign_id': c['id'], 'campaign_name': c['name'], 'campaign_status': c['status'],
+                'objective': c['objective'],
+                'adset_id': '', 'adset_name': '', 'adset_status': '',
+                'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
+                'spend': c['spend'], 'impressions': c['impressions'],
+                'reach': c['reach'], 'clicks': c['clicks'],
+                'link_clicks': c['link_clicks'], 'cpm': c['cpm'],
+                'results': c['result'], 'result_label': c['result_label'],
+                'cpr': c['cpr'], 'purchases': c['purchases'],
+                'messages': c['messages'], 'cost_per_message': c['cost_per_message'],
+            })
+
+        # Build status map from campaigns for daily rows
+        status_map = {c['id']: c['status'] for c in campaigns}
         for row in fetch_campaigns_daily(acc_id):
             row['account'] = acc_name
+            row['status']  = status_map.get(row.get('campaign_id', ''), '')
             campaigns_daily_rows.append(row)
 
-        campaigns = fetch_campaigns(acc_id)
         for c in campaigns:
             campaigns_rows.append({
                 'date_updated': TODAY, 'account': acc_name,
@@ -477,6 +526,36 @@ def main():
                         'cpr': ad['cpr'], 'purchases': ad['purchases'],
                         'messages': ad['messages'], 'cost_per_message': ad['cost_per_message'],
                     })
+                    unified_rows.append({
+                        'date_updated': TODAY, 'account': acc_name,
+                        'level': 'ad',
+                        'campaign_id': c['id'], 'campaign_name': c['name'], 'campaign_status': c['status'],
+                        'objective': c['objective'],
+                        'adset_id': a['id'], 'adset_name': a['name'], 'adset_status': a['status'],
+                        'ad_id': ad['id'], 'ad_name': ad['name'], 'ad_status': ad['status'],
+                        'thumbnail_url': ad['thumbnail_url'],
+                        'spend': ad['spend'], 'impressions': ad['impressions'],
+                        'reach': ad['reach'], 'clicks': ad['clicks'],
+                        'link_clicks': ad['link_clicks'], 'cpm': ad['cpm'],
+                        'results': ad['result'], 'result_label': ad['result_label'],
+                        'cpr': ad['cpr'], 'purchases': ad['purchases'],
+                        'messages': ad['messages'], 'cost_per_message': ad['cost_per_message'],
+                    })
+
+                unified_rows.append({
+                    'date_updated': TODAY, 'account': acc_name,
+                    'level': 'adset',
+                    'campaign_id': c['id'], 'campaign_name': c['name'], 'campaign_status': c['status'],
+                    'objective': c['objective'],
+                    'adset_id': a['id'], 'adset_name': a['name'], 'adset_status': a['status'],
+                    'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
+                    'spend': a['spend'], 'impressions': a['impressions'],
+                    'reach': a['reach'], 'clicks': a['clicks'],
+                    'link_clicks': a['link_clicks'], 'cpm': a['cpm'],
+                    'results': a['result'], 'result_label': a['result_label'],
+                    'cpr': a['cpr'], 'purchases': a['purchases'],
+                    'messages': a['messages'], 'cost_per_message': a['cost_per_message'],
+                })
 
         balance, currency, display = fetch_balance(acc_id)
         balances_rows.append({
@@ -494,6 +573,9 @@ def main():
 
     load_table(client, 'campaigns', CAMPAIGN_SCHEMA, campaigns_rows)
     print(f'  ✓ campaigns: {len(campaigns_rows)} rows')
+
+    load_table(client, 'unified', UNIFIED_SCHEMA, unified_rows)
+    print(f'  ✓ unified: {len(unified_rows)} rows')
 
     load_table(client, 'campaigns_daily', CAMPAIGN_DAILY_SCHEMA, campaigns_daily_rows)
     print(f'  ✓ campaigns_daily: {len(campaigns_daily_rows)} rows')
