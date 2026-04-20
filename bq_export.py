@@ -256,7 +256,9 @@ def fetch_campaigns(account_id):
     for c in r.json().get('data', []):
         ins  = (c.get('insights', {}).get('data') or [{}])[0]
         data = parse_insights(ins, c.get('objective', ''))
-        data.update({'id': c['id'], 'name': c['name'], 'status': c.get('status', ''), 'created_time': c.get('created_time', '')})
+        ct = c.get('created_time', '')
+        if ct: ct = ct[:19].replace('T', ' ')  # 2026-01-06T01:40:27+0200 → 2026-01-06 01:40:27
+        data.update({'id': c['id'], 'name': c['name'], 'status': c.get('status', ''), 'created_time': ct})
         out.append(data)
     return sorted(out, key=lambda x: x['spend'], reverse=True)
 
