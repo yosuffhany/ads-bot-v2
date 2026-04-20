@@ -97,6 +97,29 @@ DAILY_SCHEMA = [
     bigquery.SchemaField('purchases',   'INTEGER'),
 ]
 
+ADS_SCHEMA = [
+    bigquery.SchemaField('date_updated',   'DATE'),
+    bigquery.SchemaField('account',        'STRING'),
+    bigquery.SchemaField('campaign_name',  'STRING'),
+    bigquery.SchemaField('campaign_id',    'STRING'),
+    bigquery.SchemaField('adset_name',     'STRING'),
+    bigquery.SchemaField('adset_id',       'STRING'),
+    bigquery.SchemaField('ad_id',          'STRING'),
+    bigquery.SchemaField('ad_name',        'STRING'),
+    bigquery.SchemaField('status',         'STRING'),
+    bigquery.SchemaField('thumbnail_url',  'STRING'),
+    bigquery.SchemaField('spend',          'FLOAT'),
+    bigquery.SchemaField('impressions',    'INTEGER'),
+    bigquery.SchemaField('reach',          'INTEGER'),
+    bigquery.SchemaField('clicks',         'INTEGER'),
+    bigquery.SchemaField('link_clicks',    'INTEGER'),
+    bigquery.SchemaField('cpm',            'FLOAT'),
+    bigquery.SchemaField('results',        'INTEGER'),
+    bigquery.SchemaField('result_label',   'STRING'),
+    bigquery.SchemaField('cpr',            'FLOAT'),
+    bigquery.SchemaField('purchases',      'INTEGER'),
+]
+
 # ── META API HELPERS ──────────────────────────────────────────────────────────
 
 def parse_insights(ins, objective_raw):
@@ -175,15 +198,42 @@ def fetch_adsets(campaign_id, obj_raw):
         out.append(data)
     return sorted(out, key=lambda x: x['spend'], reverse=True)
 
+def fetch_ads(adset_id, obj_raw):
+    tr = f'{{"since":"{SINCE}","until":"{UNTIL}"}}'
+    try:
+        r = requests.get(
+            f'https://graph.facebook.com/v19.0/{adset_id}/ads',
+            params={
+                'access_token': TOKEN,
+                'fields': f'id,name,status,creative{{thumbnail_url,image_url}},insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
+                'limit': 200,
+            }
+        )
+        r.raise_for_status()
+        out = []
+        for a in r.json().get('data', []):
+            ins       = (a.get('insights', {}).get('data') or [{}])[0]
+            data      = parse_insights(ins, obj_raw)
+            creative  = a.get('creative', {})
+            thumbnail = creative.get('thumbnail_url') or creative.get('image_url') or ''
+            data.update({'id': a['id'], 'name': a['name'], 'status': a.get('status', ''), 'thumbnail_url': thumbnail})
+            out.append(data)
+        return sorted(out, key=lambda x: x['spend'], reverse=True)
+    except Exception:
+        return []
+
 def fetch_balance(account_id):
+    import re
     r = requests.get(
         f'https://graph.facebook.com/v19.0/{account_id}',
-        params={'access_token': TOKEN, 'fields': 'funding_source_details,currency,balance'}
+        params={'access_token': TOKEN, 'fields': 'funding_source_details,currency'}
     )
     d = r.json()
-    raw_balance = d.get('balance', 0)
-    balance_usd = round(int(raw_balance) / 100, 2) if raw_balance else 0.0
-    return balance_usd, d.get('currency', 'USD'), d.get('funding_source_details', {}).get('display_string', '')
+    currency = d.get('currency', 'EGP')
+    display  = d.get('funding_source_details', {}).get('display_string', '')
+    match    = re.search(r'[\d,]+\.?\d*', display.replace(',', ''))
+    balance  = round(float(match.group().replace(',', '')), 2) if match else 0.0
+    return balance, currency, display
 
 def fetch_daily(account_id):
     r = requests.get(
@@ -249,6 +299,7 @@ def main():
 
     campaigns_rows = []
     adsets_rows    = []
+    ads_rows       = []
     balances_rows  = []
     daily_rows     = []
 
@@ -282,6 +333,21 @@ def main():
                     'cpr': a['cpr'], 'purchases': a['purchases'],
                 })
 
+                ads = fetch_ads(a['id'], c['objective'])
+                for ad in ads:
+                    ads_rows.append({
+                        'date_updated': TODAY, 'account': acc_name,
+                        'campaign_name': c['name'], 'campaign_id': c['id'],
+                        'adset_name': a['name'], 'adset_id': a['id'],
+                        'ad_id': ad['id'], 'ad_name': ad['name'],
+                        'status': ad['status'], 'thumbnail_url': ad['thumbnail_url'],
+                        'spend': ad['spend'], 'impressions': ad['impressions'],
+                        'reach': ad['reach'], 'clicks': ad['clicks'],
+                        'link_clicks': ad['link_clicks'], 'cpm': ad['cpm'],
+                        'results': ad['result'], 'result_label': ad['result_label'],
+                        'cpr': ad['cpr'], 'purchases': ad['purchases'],
+                    })
+
         balance, currency, display = fetch_balance(acc_id)
         balances_rows.append({
             'date_updated': TODAY, 'account': acc_name,
@@ -298,6 +364,9 @@ def main():
 
     load_table(client, 'campaigns', CAMPAIGN_SCHEMA, campaigns_rows)
     print(f'  ✓ campaigns: {len(campaigns_rows)} rows')
+
+    load_table(client, 'ads', ADS_SCHEMA, ads_rows)
+    print(f'  ✓ ads: {len(ads_rows)} rows')
 
     load_table(client, 'adsets', ADSET_SCHEMA, adsets_rows)
     print(f'  ✓ adsets: {len(adsets_rows)} rows')
