@@ -362,24 +362,33 @@ def fetch_daily(account_id):
                 'access_token': TOKEN,
                 'time_range': f'{{"since":"{SINCE}","until":"{UNTIL}"}}',
                 'time_increment': 1,
-                'fields': 'date_start,spend,impressions,inline_link_clicks,reach,actions',
+                'fields': 'date_start,spend,impressions,inline_link_clicks,reach,cpm,actions,cost_per_action_type',
             }
         )
         out = []
         for row in rows:
             actions   = row.get('actions', [])
+            costs     = row.get('cost_per_action_type', [])
             purchases = sum(int(float(a['value'])) for a in actions if a['action_type'] in PURCHASE_ACTIONS)
             msg_act   = next((a for a in actions
                               if a['action_type'] == 'onsite_conversion.messaging_conversation_started_7d'), None)
             messages  = int(float(msg_act['value'])) if msg_act else 0
+            msg_cost  = next((c for c in costs
+                              if c['action_type'] == 'onsite_conversion.messaging_conversation_started_7d'), None)
+            spend     = round(float(row.get('spend', 0)), 2)
+            cost_per_message = round(
+                float(msg_cost['value']) if msg_cost else (spend / messages if messages else 0), 2
+            )
             out.append({
-                'date':        row['date_start'],
-                'impressions': int(row.get('impressions', 0)),
-                'reach':       int(row.get('reach', 0)),
-                'link_clicks': int(row.get('inline_link_clicks', 0)),
-                'spend':       round(float(row.get('spend', 0)), 2),
-                'purchases':   purchases,
-                'messages':    messages,
+                'date':             row['date_start'],
+                'impressions':      int(row.get('impressions', 0)),
+                'reach':            int(row.get('reach', 0)),
+                'link_clicks':      int(row.get('inline_link_clicks', 0)),
+                'spend':            spend,
+                'cpm':              round(float(row.get('cpm', 0)), 2),
+                'purchases':        purchases,
+                'messages':         messages,
+                'cost_per_message': cost_per_message,
             })
         return sorted(out, key=lambda x: x['date'])
     except Exception as e:
