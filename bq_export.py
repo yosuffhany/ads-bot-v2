@@ -480,7 +480,8 @@ def main():
         rows = []
 
         campaigns  = fetch_campaigns(acc_id)
-        status_map = {c['id']: c['status'] for c in campaigns}
+        status_map    = {c['id']: c['status']     for c in campaigns}
+        obj_label_map = {c['id']: c['objective']  for c in campaigns}   # stable parsed label
         print(f'  campaigns: {len(campaigns)}')
 
         # level=account — daily totals (trend charts)
@@ -492,16 +493,19 @@ def main():
                 'purchases': row['purchases'],
             }, status_map=status_map))
 
-        # level=campaign — daily
+        # level=campaign — daily (objective fixed from campaign list)
         camp_daily = fetch_campaigns_daily(acc_id)
         print(f'  campaigns_daily: {len(camp_daily)} rows')
         for row in camp_daily:
+            # Fix: use stable objective label from campaign list (same label every day)
+            row['objective'] = obj_label_map.get(row['campaign_id'], row['objective'])
             rows.append(_unified_row('campaign', acc_name, row, status_map=status_map))
 
         # level=adset — daily
         adset_daily = fetch_adsets_daily(acc_id)
         print(f'  adsets_daily: {len(adset_daily)} rows')
         for row in adset_daily:
+            row['objective'] = obj_label_map.get(row['campaign_id'], row['objective'])
             rows.append(_unified_row('adset', acc_name, row, status_map=status_map))
 
         # level=ad — daily + thumbnails
@@ -509,6 +513,7 @@ def main():
         ads_daily = fetch_ads_daily(acc_id)
         print(f'  ads_daily: {len(ads_daily)} rows')
         for row in ads_daily:
+            row['objective']    = obj_label_map.get(row['campaign_id'], row['objective'])
             row['thumbnail_url'] = thumbnail_map.get(row.get('ad_id', ''), '')
             rows.append(_unified_row('ad', acc_name, row, status_map=status_map))
 
