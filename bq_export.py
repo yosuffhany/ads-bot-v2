@@ -193,29 +193,6 @@ def fetch_campaigns(account_id):
         print(f'  ! campaigns error for {account_id}: {e}')
         return []
 
-def fetch_adsets(campaign_id, obj_raw):
-    tr = f'{{"since":"{SINCE}","until":"{UNTIL}"}}'
-    try:
-        rows = paginate(
-            f'https://graph.facebook.com/v19.0/{campaign_id}/adsets',
-            {
-                'access_token': TOKEN,
-                'fields': f'id,name,status,insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
-                'limit': 200,
-            }
-        )
-        out = []
-        for a in rows:
-            if not a.get('name', '').strip():
-                continue
-            ins  = (a.get('insights', {}).get('data') or [{}])[0]
-            data = parse_insights(ins, obj_raw)
-            data.update({'id': a['id'], 'name': a['name'], 'status': a.get('status', '')})
-            out.append(data)
-        return sorted(out, key=lambda x: x['spend'], reverse=True)
-    except Exception as e:
-        print(f'  ! adsets error for {campaign_id}: {e}')
-        return []
 
 def fetch_campaigns_daily(account_id):
     try:
@@ -250,13 +227,15 @@ def fetch_campaigns_daily(account_id):
         print(f'  ! campaigns_daily error for {account_id}: {e}')
         return []
 
-def fetch_adsets_daily(account_id):
+def fetch_adsets_daily(account_id, since=None, until=None):
+    since = since or SINCE
+    until = until or UNTIL
     try:
         rows = paginate(
             f'https://graph.facebook.com/v19.0/{account_id}/insights',
             {
                 'access_token': TOKEN,
-                'time_range': f'{{"since":"{SINCE}","until":"{UNTIL}"}}',
+                'time_range': f'{{"since":"{since}","until":"{until}"}}',
                 'time_increment': 1,
                 'level': 'adset',
                 'fields': f'date_start,campaign_id,campaign_name,adset_id,adset_name,objective,{INSIGHTS_FIELDS}',
@@ -284,32 +263,79 @@ def fetch_adsets_daily(account_id):
             })
         return out
     except Exception as e:
+        # Retry with shorter range if server error (too much data)
+        if since == SINCE and ('500' in str(e) or '400' in str(e)):
+            since_30 = str(date.today() - timedelta(days=30))
+            print(f'  ! adsets_daily retrying with 30 days for {account_id}')
+            return fetch_adsets_daily(account_id, since=since_30, until=until)
         print(f'  ! adsets_daily error for {account_id}: {e}')
         return []
 
-def fetch_ads(adset_id, obj_raw):
-    tr = f'{{"since":"{SINCE}","until":"{UNTIL}"}}'
+def fetch_ads_daily(account_id, since=None, until=None):
+    """Daily ad-level metrics — responds to date filter like campaigns/adsets."""
+    since = since or SINCE
+    until = until or UNTIL
     try:
         rows = paginate(
-            f'https://graph.facebook.com/v19.0/{adset_id}/ads',
+            f'https://graph.facebook.com/v19.0/{account_id}/insights',
             {
                 'access_token': TOKEN,
-                'fields': f'id,name,status,creative{{thumbnail_url,image_url}},insights.time_range({tr}){{{INSIGHTS_FIELDS}}}',
-                'limit': 200,
+                'time_range': f'{{"since":"{since}","until":"{until}"}}',
+                'time_increment': 1,
+                'level': 'ad',
+                'fields': f'date_start,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,objective,{INSIGHTS_FIELDS}',
+                'limit': 500,
             }
         )
         out = []
-        for a in rows:
-            ins      = (a.get('insights', {}).get('data') or [{}])[0]
-            data     = parse_insights(ins, obj_raw)
-            creative = a.get('creative', {})
-            thumbnail = creative.get('thumbnail_url') or creative.get('image_url') or ''
-            data.update({'id': a['id'], 'name': a['name'],
-                         'status': a.get('status', ''), 'thumbnail_url': thumbnail})
-            out.append(data)
-        return sorted(out, key=lambda x: x['spend'], reverse=True)
-    except Exception:
+        for row in rows:
+            if not row.get('ad_name', '').strip():
+                continue
+            ins = parse_insights(row, row.get('objective', ''))
+            out.append({
+                'date':          row['date_start'],
+                'campaign_id':   row.get('campaign_id', ''),
+                'campaign_name': row.get('campaign_name', ''),
+                'adset_id':      row.get('adset_id', ''),
+                'adset_name':    row.get('adset_name', ''),
+                'ad_id':         row.get('ad_id', ''),
+                'ad_name':       row.get('ad_name', ''),
+                'objective':     ins['objective'],
+                'spend':         ins['spend'],        'impressions': ins['impressions'],
+                'reach':         ins['reach'],         'clicks':      ins['clicks'],
+                'link_clicks':   ins['link_clicks'],   'cpm':         ins['cpm'],
+                'results':       ins['result'],         'result_label': ins['result_label'],
+                'cpr':           ins['cpr'],            'purchases':   ins['purchases'],
+                'messages':      ins['messages'],       'cost_per_message': ins['cost_per_message'],
+            })
+        return out
+    except Exception as e:
+        if since == SINCE and ('500' in str(e) or '400' in str(e)):
+            since_30 = str(date.today() - timedelta(days=30))
+            print(f'  ! ads_daily retrying with 30 days for {account_id}')
+            return fetch_ads_daily(account_id, since=since_30, until=until)
+        print(f'  ! ads_daily error for {account_id}: {e}')
         return []
+
+def fetch_all_ad_thumbnails(account_id):
+    """Fetch ad_id -> thumbnail_url map in one account-level call."""
+    try:
+        rows = paginate(
+            f'https://graph.facebook.com/v19.0/{account_id}/ads',
+            {
+                'access_token': TOKEN,
+                'fields': 'id,creative{thumbnail_url,image_url}',
+                'limit': 500,
+            }
+        )
+        return {
+            a['id']: (a.get('creative', {}).get('thumbnail_url') or
+                      a.get('creative', {}).get('image_url') or '')
+            for a in rows
+        }
+    except Exception as e:
+        print(f'  ! thumbnails error for {account_id}: {e}')
+        return {}
 
 def fetch_balance(account_id):
     try:
@@ -393,43 +419,40 @@ def load_table(client, table_name, schema, rows):
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
-def _unified_row(level, acc_name, row, c=None, a=None, ad=None, status_map=None):
+def _unified_row(level, acc_name, row, status_map=None):
     """Build a unified table row for any level."""
-    cid = row.get('campaign_id', c['id'] if c else '')
+    cid = row.get('campaign_id', '')
     base = {
-        'date':            row.get('date', TODAY),
+        'date':            row.get('date', None),
         'date_updated':    TODAY,
         'account':         acc_name,
         'level':           level,
         'campaign_id':     cid,
-        'campaign_name':   row.get('campaign_name', c['name'] if c else ''),
-        'campaign_status': (status_map or {}).get(cid, c['status'] if c else ''),
-        'objective':       row.get('objective', c['objective'] if c else ''),
-        'adset_id':        row.get('adset_id',   a['id']   if a else ''),
-        'adset_name':      row.get('adset_name', a['name'] if a else ''),
-        'adset_status':    a['status'] if a else '',
-        'ad_id':           ad['id']            if ad else '',
-        'ad_name':         ad['name']          if ad else '',
-        'ad_status':       ad['status']        if ad else '',
-        'thumbnail_url':   ad['thumbnail_url'] if ad else '',
+        'campaign_name':   row.get('campaign_name', ''),
+        'campaign_status': (status_map or {}).get(cid, ''),
+        'objective':       row.get('objective', ''),
+        'adset_id':        row.get('adset_id', ''),
+        'adset_name':      row.get('adset_name', ''),
+        'adset_status':    row.get('adset_status', ''),
+        'ad_id':           row.get('ad_id', ''),
+        'ad_name':         row.get('ad_name', ''),
+        'ad_status':       row.get('ad_status', ''),
+        'thumbnail_url':   row.get('thumbnail_url', ''),
+        'spend':            row.get('spend', 0),
+        'impressions':      row.get('impressions', 0),
+        'reach':            row.get('reach', 0),
+        'clicks':           row.get('clicks', 0),
+        'link_clicks':      row.get('link_clicks', 0),
+        'cpm':              row.get('cpm', 0),
+        'results':          row.get('results', row.get('result', 0)),
+        'result_label':     row.get('result_label', 'Results'),
+        'cpr':              row.get('cpr', 0),
+        'purchases':        row.get('purchases', 0),
+        'messages':         row.get('messages', 0),
+        'cost_per_message': row.get('cost_per_message', 0),
+        'balance':          row.get('balance', 0.0),
+        'currency':         row.get('currency', ''),
     }
-    src = ad or row
-    base.update({
-        'spend':            src.get('spend', 0),
-        'impressions':      src.get('impressions', 0),
-        'reach':            src.get('reach', 0),
-        'clicks':           src.get('clicks', 0),
-        'link_clicks':      src.get('link_clicks', 0),
-        'cpm':              src.get('cpm', 0),
-        'results':          src.get('results', src.get('result', 0)),
-        'result_label':     src.get('result_label', 'Results'),
-        'cpr':              src.get('cpr', 0),
-        'purchases':        src.get('purchases', 0),
-        'messages':         src.get('messages', 0),
-        'cost_per_message': src.get('cost_per_message', 0),
-        'balance':          0.0,
-        'currency':         '',
-    })
     return base
 
 
@@ -447,58 +470,41 @@ def main():
         status_map = {c['id']: c['status'] for c in campaigns}
         print(f'  campaigns: {len(campaigns)}')
 
-        # level=account — daily account totals (for trend charts)
+        # level=account — daily account totals (trend charts)
         for row in fetch_daily(acc_id):
-            unified_rows.append({
-                'date': row['date'], 'date_updated': TODAY,
-                'account': acc_name, 'level': 'account',
-                'campaign_id': '', 'campaign_name': '', 'campaign_status': '',
-                'objective': '', 'adset_id': '', 'adset_name': '', 'adset_status': '',
-                'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
-                'spend': row['spend'], 'impressions': row['impressions'],
-                'reach': row['reach'], 'clicks': 0,
-                'link_clicks': row['link_clicks'], 'cpm': 0.0,
-                'results': 0, 'result_label': '', 'cpr': 0.0,
-                'purchases': row['purchases'], 'messages': row['messages'],
-                'cost_per_message': 0.0,
-                'balance': 0.0, 'currency': '',
-            })
+            unified_rows.append(_unified_row('account', acc_name, {
+                'date': row['date'], 'spend': row['spend'],
+                'impressions': row['impressions'], 'reach': row['reach'],
+                'link_clicks': row['link_clicks'], 'messages': row['messages'],
+                'purchases': row['purchases'],
+            }, status_map=status_map))
 
-        # level=campaign — daily rows (respond to date filter)
+        # level=campaign — daily (date-responsive)
         camp_daily = fetch_campaigns_daily(acc_id)
         print(f'  campaigns_daily: {len(camp_daily)} rows')
         for row in camp_daily:
             unified_rows.append(_unified_row('campaign', acc_name, row, status_map=status_map))
 
-        # level=adset — daily rows (respond to date filter)
+        # level=adset — daily (date-responsive)
         adset_daily = fetch_adsets_daily(acc_id)
         print(f'  adsets_daily: {len(adset_daily)} rows')
         for row in adset_daily:
             unified_rows.append(_unified_row('adset', acc_name, row, status_map=status_map))
 
-        # level=ad — aggregated over full SINCE->UNTIL range
-        ad_count = 0
-        for c in campaigns:
-            adsets = fetch_adsets(c['id'], c['objective_raw'])
-            for a in adsets:
-                for ad in fetch_ads(a['id'], c['objective_raw']):
-                    unified_rows.append(_unified_row('ad', acc_name, {'date': TODAY}, c=c, a=a, ad=ad))
-                    ad_count += 1
-        print(f'  ads: {ad_count}')
+        # level=ad — daily (date-responsive) + thumbnails
+        thumbnail_map = fetch_all_ad_thumbnails(acc_id)
+        ads_daily = fetch_ads_daily(acc_id)
+        print(f'  ads_daily: {len(ads_daily)} rows')
+        for row in ads_daily:
+            row['thumbnail_url'] = thumbnail_map.get(row.get('ad_id', ''), '')
+            unified_rows.append(_unified_row('ad', acc_name, row, status_map=status_map))
 
-        # level=balance — current account balance
+        # level=balance — current balance (no date)
         balance, currency, display = fetch_balance(acc_id)
-        unified_rows.append({
-            'date': TODAY, 'date_updated': TODAY,
-            'account': acc_name, 'level': 'balance',
-            'campaign_id': '', 'campaign_name': '', 'campaign_status': '',
-            'objective': display, 'adset_id': '', 'adset_name': '', 'adset_status': '',
-            'ad_id': '', 'ad_name': '', 'ad_status': '', 'thumbnail_url': '',
-            'spend': 0.0, 'impressions': 0, 'reach': 0, 'clicks': 0,
-            'link_clicks': 0, 'cpm': 0.0, 'results': 0, 'result_label': '',
-            'cpr': 0.0, 'purchases': 0, 'messages': 0, 'cost_per_message': 0.0,
+        unified_rows.append(_unified_row('balance', acc_name, {
+            'date': None, 'objective': display,
             'balance': balance, 'currency': currency,
-        })
+        }, status_map=status_map))
 
     load_table(client, 'unified', UNIFIED_SCHEMA, unified_rows)
     print('Done.')
