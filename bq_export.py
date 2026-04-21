@@ -520,7 +520,7 @@ def main():
         # level=balance — current balance
         balance, currency, display = fetch_balance(acc_id)
         rows.append(_unified_row('balance', acc_name, {
-            'date': None, 'objective': display,
+            'date': TODAY, 'objective': display,
             'balance': balance, 'currency': currency,
         }, status_map=status_map))
 
