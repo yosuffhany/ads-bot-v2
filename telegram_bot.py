@@ -106,6 +106,7 @@ ACCOUNTS = [
     {'key': 'belal',        'id': 'act_1091777362163635', 'label': 'Belal Khier',      'ar': ['بلال', 'بلال خير']},
     {'key': 'yakootcoffee', 'id': 'act_1136771131607775', 'label': 'Yakoot Coffee',   'ar': ['ياقوت كوفي', 'ياقوت قهوة']},
     {'key': 'looklook',     'id': 'act_879890704620098',  'label': 'Look Look',        'ar': ['لوك لوك', 'لوكلوك']},
+    {'key': 'sedra',        'id': 'act_1303633554699002', 'label': 'Sedra',            'ar': ['سيدرا', 'سدرا', 'سدره', 'سيدره']},
 ]
 
 ACCOUNTS_BY_INDEX = {i+1: a for i, a in enumerate(ACCOUNTS)}
