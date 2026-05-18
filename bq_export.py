@@ -72,6 +72,7 @@ UNIFIED_SCHEMA = [
     bigquery.SchemaField('purchases',        'INTEGER'),
     bigquery.SchemaField('messages',         'INTEGER'),
     bigquery.SchemaField('cost_per_message', 'FLOAT'),
+    bigquery.SchemaField('msg_spend',        'FLOAT'),
     bigquery.SchemaField('balance',          'FLOAT'),
     bigquery.SchemaField('currency',         'STRING'),
 ]
@@ -115,6 +116,7 @@ def parse_insights(ins, objective_raw):
     cost_per_message = round(
         float(msg_cost['value']) if msg_cost else (spend / messages if messages else 0), 2
     )
+    msg_spend = round(cost_per_message * messages, 2)  # spend attributable to messages only
 
     if obj in AWARENESS_OBJECTIVES:
         result, result_label = reach, 'Reach'
@@ -165,6 +167,7 @@ def parse_insights(ins, objective_raw):
         'spend': spend, 'cpm': cpm, 'impressions': impressions,
         'clicks': clicks, 'reach': reach, 'link_clicks': link_clicks,
         'purchases': purchases, 'messages': messages, 'cost_per_message': cost_per_message,
+        'msg_spend': msg_spend,
     }
 
 # ── META API FETCHERS ─────────────────────────────────────────────────────────
@@ -390,6 +393,7 @@ def fetch_daily(account_id):
                 'purchases':        purchases,
                 'messages':         messages,
                 'cost_per_message': cost_per_message,
+                'msg_spend':        round(cost_per_message * messages, 2),
             })
         return sorted(out, key=lambda x: x['date'])
     except Exception as e:
@@ -460,6 +464,7 @@ def _unified_row(level, acc_name, row, status_map=None):
         'purchases':        row.get('purchases', 0),
         'messages':         row.get('messages', 0),
         'cost_per_message': row.get('cost_per_message', 0),
+        'msg_spend':        row.get('msg_spend', 0.0),
         'balance':          row.get('balance', 0.0),
         'currency':         row.get('currency', ''),
     }
