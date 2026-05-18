@@ -1,13 +1,12 @@
 """
-Ads Telegram Bot — Webhook mode for Render.com free hosting
+Ads Telegram Bot — Polling mode for Railway hosting
 - Any account name/number → get balance
 - Auto alerts when watched accounts drop below 1000 or 500
 """
 import os, re, random, requests, logging, json
 from dotenv import load_dotenv
-from flask import Flask, request
 from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes, Application
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
 
 load_dotenv()
 
@@ -19,20 +18,13 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_BOT_TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
 LONG_LIVED_TOKEN = os.environ.get('LONG_LIVED_TOKEN')   or os.getenv('LONG_LIVED_TOKEN')
-WEBHOOK_URL      = os.environ.get('WEBHOOK_URL', '')     # e.g. https://your-app.onrender.com
 
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
-# Team IDs to receive alerts
-TEAM_IDS = [7205504412, 1285453461, 932647337]  # Nsayedb, Aliaa, Yosuff
-
-# Accounts to watch for balance alerts
+TEAM_IDS   = [7205504412, 1285453461, 932647337]
 WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'showpink'}
-
-# Alert thresholds
 THRESHOLDS = [1000, 500]
-
 ALERTS_FILE = '/tmp/sent_alerts.json'
 
 def load_alerts():
@@ -152,13 +144,14 @@ def get_balance(acc):
     return text
 
 def accounts_list():
-    lines = ["الأكونتات المتاحة:\n"]
+    lines = ["الاكونتات المتاحة:\n"]
     for i, a in enumerate(ACCOUNTS, 1):
         lines.append(f"{i}. {a['label']}")
-    lines.append("\nابعت الاسم أو الرقم عشان تعرف الرصيد")
+    lines.append("\nابعت الاسم او الرقم عشان تعرف الرصيد")
     return '\n'.join(lines)
 
-async def check_balances_and_alert(bot):
+async def check_balances(context):
+    bot = context.bot
     watch_accounts = [a for a in ACCOUNTS if a['key'] in WATCH_KEYS]
     for acc in watch_accounts:
         display, value = get_balance_raw(acc)
@@ -199,7 +192,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "مش فاهم 🤔\n\nجرب:\n- كل — عرض الأكونتات\n- ابعت اسم الأكونت أو رقمه"
+        "مش فاهم 🤔\n\nجرب:\n- كل — عرض الاكونتات\n- ابعت اسم الاكونت او رقمه"
     )
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -208,8 +201,8 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def test_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != 932647337:
         return
-    await update.message.reply_text("بفحص الأرصدة...")
-    await check_balances_and_alert(context.bot)
+    await update.message.reply_text("بفحص الارصدة...")
+    await check_balances(context)
     await update.message.reply_text("خلص الفحص")
 
 async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -224,43 +217,15 @@ async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"{display} ({icon})" if value else display)
     await update.message.reply_text('\n'.join(lines))
 
-# ── Flask webhook app ─────────────────────────────────────────────────────────
-
-flask_app = Flask(__name__)
-ptb_app: Application = None
-
-@flask_app.get('/')
-def health():
-    return 'OK', 200
-
-@flask_app.post(f'/webhook/{TELEGRAM_TOKEN}')
-async def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, ptb_app.bot)
-    await ptb_app.process_update(update)
-    return 'OK', 200
-
-def build_app():
-    global ptb_app
-    ptb_app = ApplicationBuilder().token(TELEGRAM_TOKEN).updater(None).build()
-    ptb_app.add_handler(CommandHandler('myid', myid))
-    ptb_app.add_handler(CommandHandler('test', test_cmd))
-    ptb_app.add_handler(CommandHandler('watched', watched_cmd))
-    ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    return ptb_app
-
-async def setup_webhook():
-    url = f"{WEBHOOK_URL}/webhook/{TELEGRAM_TOKEN}"
-    await ptb_app.bot.set_webhook(url)
-    logger.info(f"Webhook set: {url}")
-
 def main():
-    import asyncio
-    build_app()
-    asyncio.run(ptb_app.initialize())
-    asyncio.run(setup_webhook())
-    port = int(os.environ.get('PORT', 8443))
-    flask_app.run(host='0.0.0.0', port=port)
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler('myid', myid))
+    app.add_handler(CommandHandler('test', test_cmd))
+    app.add_handler(CommandHandler('watched', watched_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.job_queue.run_repeating(check_balances, interval=7200, first=60)
+    logger.info("Bot running...")
+    app.run_polling()
 
 if __name__ == '__main__':
     main()

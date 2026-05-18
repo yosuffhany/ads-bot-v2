@@ -1,5 +1,4 @@
-python-telegram-bot==22.7
-flask==3.1.0
+python-telegram-bot[job-queue]==22.7
 requests==2.32.5
 python-dotenv==1.2.2
 google-api-python-client==2.194.0
