@@ -70,7 +70,8 @@ UNIFIED_SCHEMA = [
     bigquery.SchemaField('result_label',       'STRING'),
     bigquery.SchemaField('purchases',          'INTEGER'),
     bigquery.SchemaField('messages',           'INTEGER'),
-    bigquery.SchemaField('msg_spend',                'FLOAT'),   # spend attr. to messages (additive)
+    bigquery.SchemaField('msg_spend',                'FLOAT'),   # spend attr. to messages (additive per level)
+    bigquery.SchemaField('messages_camp',            'INTEGER'), # campaign-level only → scorecard denominator ✓
     bigquery.SchemaField('msg_campaign_spend',       'FLOAT'),   # campaign-level only → scorecard total ✓
     bigquery.SchemaField('awareness_spend',          'FLOAT'),   # all levels → CPR formula in tables ✓
     bigquery.SchemaField('awareness_reach',          'INTEGER'), # all levels → CPR formula in tables ✓
@@ -478,6 +479,7 @@ def _unified_row(level, acc_name, row, status_map=None):
         'messages':           row.get('messages', 0),
         'msg_spend':          row.get('msg_spend', 0.0),
         # campaign-level only → scorecard totals صح بدون فلتر
+        'messages_camp':            row.get('messages', 0) if is_camp else 0,
         'msg_campaign_spend':       (spend if is_messages  else 0.0) if is_camp else 0.0,
         'awareness_campaign_spend': (spend if is_awareness else 0.0) if is_camp else 0.0,
         # all levels → CPR formula في الجداول صح
