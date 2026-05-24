@@ -45,36 +45,37 @@ TODAY = str(date.today())
 
 
 UNIFIED_SCHEMA = [
-    bigquery.SchemaField('date',             'DATE'),
-    bigquery.SchemaField('date_updated',     'DATE'),
-    bigquery.SchemaField('account',          'STRING'),
-    bigquery.SchemaField('level',            'STRING'),   # campaign / adset / ad
-    bigquery.SchemaField('campaign_id',      'STRING'),
-    bigquery.SchemaField('campaign_name',    'STRING'),
-    bigquery.SchemaField('campaign_status',  'STRING'),
-    bigquery.SchemaField('objective',        'STRING'),
-    bigquery.SchemaField('adset_id',         'STRING'),
-    bigquery.SchemaField('adset_name',       'STRING'),
-    bigquery.SchemaField('adset_status',     'STRING'),
-    bigquery.SchemaField('ad_id',            'STRING'),
-    bigquery.SchemaField('ad_name',          'STRING'),
-    bigquery.SchemaField('ad_status',        'STRING'),
-    bigquery.SchemaField('thumbnail_url',    'STRING'),
-    bigquery.SchemaField('spend',            'FLOAT'),
-    bigquery.SchemaField('impressions',      'INTEGER'),
-    bigquery.SchemaField('reach',            'INTEGER'),
-    bigquery.SchemaField('clicks',           'INTEGER'),
-    bigquery.SchemaField('link_clicks',      'INTEGER'),
-    bigquery.SchemaField('cpm',              'FLOAT'),
-    bigquery.SchemaField('results',          'INTEGER'),
-    bigquery.SchemaField('result_label',     'STRING'),
-    bigquery.SchemaField('cpr',              'FLOAT'),
-    bigquery.SchemaField('purchases',        'INTEGER'),
-    bigquery.SchemaField('messages',         'INTEGER'),
-    bigquery.SchemaField('cost_per_message', 'FLOAT'),
-    bigquery.SchemaField('msg_spend',        'FLOAT'),
-    bigquery.SchemaField('balance',          'FLOAT'),
-    bigquery.SchemaField('currency',         'STRING'),
+    bigquery.SchemaField('date',               'DATE'),
+    bigquery.SchemaField('date_updated',       'DATE'),
+    bigquery.SchemaField('account',            'STRING'),
+    bigquery.SchemaField('level',              'STRING'),
+    bigquery.SchemaField('campaign_id',        'STRING'),
+    bigquery.SchemaField('campaign_name',      'STRING'),
+    bigquery.SchemaField('campaign_status',    'STRING'),
+    bigquery.SchemaField('objective',          'STRING'),
+    bigquery.SchemaField('adset_id',           'STRING'),
+    bigquery.SchemaField('adset_name',         'STRING'),
+    bigquery.SchemaField('adset_status',       'STRING'),
+    bigquery.SchemaField('ad_id',              'STRING'),
+    bigquery.SchemaField('ad_name',            'STRING'),
+    bigquery.SchemaField('ad_status',          'STRING'),
+    bigquery.SchemaField('thumbnail_url',      'STRING'),
+    # ── metrics ──────────────────────────────
+    bigquery.SchemaField('spend',              'FLOAT'),
+    bigquery.SchemaField('impressions',        'INTEGER'),
+    bigquery.SchemaField('reach',              'INTEGER'),
+    bigquery.SchemaField('clicks',             'INTEGER'),
+    bigquery.SchemaField('link_clicks',        'INTEGER'),
+    bigquery.SchemaField('results',            'INTEGER'),
+    bigquery.SchemaField('result_label',       'STRING'),
+    bigquery.SchemaField('purchases',          'INTEGER'),
+    bigquery.SchemaField('messages',           'INTEGER'),
+    bigquery.SchemaField('msg_spend',          'FLOAT'),   # spend attributable to messages (additive)
+    bigquery.SchemaField('msg_campaign_spend', 'FLOAT'),   # total spend of message campaigns (additive)
+    bigquery.SchemaField('awareness_spend',    'FLOAT'),   # total spend of awareness/reach campaigns (additive)
+    bigquery.SchemaField('awareness_reach',    'INTEGER'), # reach of awareness campaigns (additive per level)
+    bigquery.SchemaField('balance',            'FLOAT'),
+    bigquery.SchemaField('currency',           'STRING'),
 ]
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -434,75 +435,51 @@ def load_table(client, table_name, schema, rows):
     job.result()
     print(f'  OK {table_name}: {len(rows)} rows')
 
-# ── BIGQUERY VIEWS ───────────────────────────────────────────────────────────
-
-def create_views(client):
-    """Create/replace BQ views per account with pre-calculated metrics."""
-    for acc_name in ACCOUNTS:
-        tbl  = table_name(acc_name)
-        view = f'view_{tbl.replace("unified_", "")}'
-        sql  = f"""
-CREATE OR REPLACE VIEW `{GCP_PROJECT}.{BQ_DATASET}.{view}` AS
-SELECT
-  *,
-  -- CPM صح: spend/impressions*1000 per row (يتجمع صح في Looker بـ SUM(spend)/SUM(impressions)*1000)
-  SAFE_DIVIDE(spend, impressions) * 1000                      AS cpm_calc,
-
-  -- Messages spend: الإنفاق على كامبينز الرسايل فقط
-  CASE WHEN LOWER(objective) LIKE '%message%' THEN spend ELSE 0 END  AS msg_campaign_spend,
-
-  -- Awareness spend: الإنفاق على كامبينز الأوعارنس/ريتش فقط
-  CASE WHEN objective IN ('Awareness','Reach') THEN spend ELSE 0 END  AS awareness_spend,
-
-  -- Awareness reach: الريتش بتاع الأوعارنس بس (additive → يتجمع صح)
-  CASE WHEN objective IN ('Awareness','Reach') THEN reach ELSE 0 END AS awareness_reach
-  -- في Looker Studio: SUM(awareness_spend) / SUM(awareness_reach) * 1000 = CPR صح
-FROM `{GCP_PROJECT}.{BQ_DATASET}.{tbl}`
-"""
-        try:
-            client.query(sql).result()
-            print(f'  View OK: {view}')
-        except Exception as e:
-            print(f'  View ERROR {view}: {e}')
-
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
 def _unified_row(level, acc_name, row, status_map=None):
     """Build a unified table row for any level."""
-    cid = row.get('campaign_id', '')
-    base = {
-        'date':            row.get('date', None),
-        'date_updated':    TODAY,
-        'account':         acc_name,
-        'level':           level,
-        'campaign_id':     cid,
-        'campaign_name':   row.get('campaign_name', ''),
-        'campaign_status': (status_map or {}).get(cid, ''),
-        'objective':       row.get('objective', ''),
-        'adset_id':        row.get('adset_id', ''),
-        'adset_name':      row.get('adset_name', ''),
-        'adset_status':    row.get('adset_status', ''),
-        'ad_id':           row.get('ad_id', ''),
-        'ad_name':         row.get('ad_name', ''),
-        'ad_status':       row.get('ad_status', ''),
-        'thumbnail_url':   row.get('thumbnail_url', ''),
-        'spend':            row.get('spend', 0),
-        'impressions':      row.get('impressions', 0),
-        'reach':            row.get('reach', 0),
-        'clicks':           row.get('clicks', 0),
-        'link_clicks':      row.get('link_clicks', 0),
-        'cpm':              row.get('cpm', 0),
-        'results':          row.get('results', row.get('result', 0)),
-        'result_label':     row.get('result_label', 'Results'),
-        'cpr':              row.get('cpr', 0),
-        'purchases':        row.get('purchases', 0),
-        'messages':         row.get('messages', 0),
-        'cost_per_message': row.get('cost_per_message', 0),
-        'msg_spend':        row.get('msg_spend', 0.0),
-        'balance':          row.get('balance', 0.0),
-        'currency':         row.get('currency', ''),
+    cid       = row.get('campaign_id', '')
+    objective = row.get('objective', '')
+    spend     = row.get('spend', 0)
+    reach     = row.get('reach', 0)
+    obj_lower = objective.lower()
+
+    is_messages  = 'message' in obj_lower
+    is_awareness = objective in ('Awareness', 'Reach')
+
+    return {
+        'date':               row.get('date', None),
+        'date_updated':       TODAY,
+        'account':            acc_name,
+        'level':              level,
+        'campaign_id':        cid,
+        'campaign_name':      row.get('campaign_name', ''),
+        'campaign_status':    (status_map or {}).get(cid, ''),
+        'objective':          objective,
+        'adset_id':           row.get('adset_id', ''),
+        'adset_name':         row.get('adset_name', ''),
+        'adset_status':       row.get('adset_status', ''),
+        'ad_id':              row.get('ad_id', ''),
+        'ad_name':            row.get('ad_name', ''),
+        'ad_status':          row.get('ad_status', ''),
+        'thumbnail_url':      row.get('thumbnail_url', ''),
+        'spend':              spend,
+        'impressions':        row.get('impressions', 0),
+        'reach':              reach,
+        'clicks':             row.get('clicks', 0),
+        'link_clicks':        row.get('link_clicks', 0),
+        'results':            row.get('results', row.get('result', 0)),
+        'result_label':       row.get('result_label', 'Results'),
+        'purchases':          row.get('purchases', 0),
+        'messages':           row.get('messages', 0),
+        'msg_spend':          row.get('msg_spend', 0.0),
+        'msg_campaign_spend': spend if is_messages  else 0.0,
+        'awareness_spend':    spend if is_awareness else 0.0,
+        'awareness_reach':    reach if is_awareness else 0,
+        'balance':            row.get('balance', 0.0),
+        'currency':           row.get('currency', ''),
     }
-    return base
 
 
 def table_name(acc_name):
@@ -582,8 +559,6 @@ def main():
         tbl = table_name(acc_name)
         load_table(client, tbl, UNIFIED_SCHEMA, rows)
 
-    print('\nCreating views...')
-    create_views(client)
     print('\nDone.')
 
 if __name__ == '__main__':
