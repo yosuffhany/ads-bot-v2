@@ -22,7 +22,7 @@ LONG_LIVED_TOKEN = os.environ.get('LONG_LIVED_TOKEN')   or os.getenv('LONG_LIVED
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
-TEAM_IDS   = [7205504412, 1285453461, 932647337]
+TEAM_IDS   = [-5184465495]
 WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'sedra'}
 THRESHOLDS = [1000, 500]
 ALERTS_FILE = '/tmp/sent_alerts.json'
@@ -171,6 +171,14 @@ async def check_balances(context):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or '').strip()
+
+    # في الجروب: رد بس لو فيه منشن للبوت
+    if update.message.chat.type in ['group', 'supergroup']:
+        bot_username = f"@{context.bot.username}"
+        if bot_username.lower() not in text.lower():
+            return
+        text = text.replace(bot_username, '').replace(bot_username.lower(), '').strip()
+
     tl   = text.lower()
 
     if any(w in tl for w in ['رصيد كل', 'كل', 'all', 'الكل', 'list', 'قائمة']):

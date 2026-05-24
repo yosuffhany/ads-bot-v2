@@ -225,6 +225,7 @@ def fetch_campaigns_daily(account_id):
                 'results':       ins['result'],         'result_label': ins['result_label'],
                 'cpr':           ins['cpr'],            'purchases':   ins['purchases'],
                 'messages':      ins['messages'],       'cost_per_message': ins['cost_per_message'],
+                'msg_spend':     ins['msg_spend'],
             })
         return out
     except Exception as e:
@@ -264,6 +265,7 @@ def fetch_adsets_daily(account_id, since=None, until=None):
                 'results':       ins['result'],         'result_label': ins['result_label'],
                 'cpr':           ins['cpr'],            'purchases':   ins['purchases'],
                 'messages':      ins['messages'],       'cost_per_message': ins['cost_per_message'],
+                'msg_spend':     ins['msg_spend'],
             })
         return out
     except Exception as e:
@@ -311,6 +313,7 @@ def fetch_ads_daily(account_id, since=None, until=None):
                 'results':       ins['result'],         'result_label': ins['result_label'],
                 'cpr':           ins['cpr'],            'purchases':   ins['purchases'],
                 'messages':      ins['messages'],       'cost_per_message': ins['cost_per_message'],
+                'msg_spend':     ins['msg_spend'],
             })
         return out
     except Exception as e:
@@ -431,6 +434,27 @@ def load_table(client, table_name, schema, rows):
     job.result()
     print(f'  OK {table_name}: {len(rows)} rows')
 
+# ── BIGQUERY VIEWS ───────────────────────────────────────────────────────────
+
+def create_views(client):
+    """Create/replace BQ views per account with pre-calculated cpm_calc & cost_per_msg_calc."""
+    for acc_name in ACCOUNTS:
+        tbl  = table_name(acc_name)
+        view = f'view_{tbl.replace("unified_", "")}'
+        sql  = f"""
+CREATE OR REPLACE VIEW `{GCP_PROJECT}.{BQ_DATASET}.{view}` AS
+SELECT
+  *,
+  SAFE_DIVIDE(spend, impressions) * 1000          AS cpm_calc,
+  SAFE_DIVIDE(msg_spend, NULLIF(messages, 0))     AS cost_per_msg_calc
+FROM `{GCP_PROJECT}.{BQ_DATASET}.{tbl}`
+"""
+        try:
+            client.query(sql).result()
+            print(f'  View OK: {view}')
+        except Exception as e:
+            print(f'  View ERROR {view}: {e}')
+
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
 def _unified_row(level, acc_name, row, status_map=None):
@@ -502,10 +526,16 @@ def main():
         # level=account — daily totals (trend charts)
         for row in fetch_daily(acc_id):
             rows.append(_unified_row('account', acc_name, {
-                'date': row['date'], 'spend': row['spend'],
-                'impressions': row['impressions'], 'reach': row['reach'],
-                'link_clicks': row['link_clicks'], 'messages': row['messages'],
-                'purchases': row['purchases'],
+                'date':             row['date'],
+                'spend':            row['spend'],
+                'impressions':      row['impressions'],
+                'reach':            row['reach'],
+                'link_clicks':      row['link_clicks'],
+                'cpm':              row['cpm'],
+                'messages':         row['messages'],
+                'cost_per_message': row['cost_per_message'],
+                'msg_spend':        row['msg_spend'],
+                'purchases':        row['purchases'],
             }, status_map=status_map))
 
         # level=campaign — daily (objective fixed from campaign list)
@@ -542,6 +572,8 @@ def main():
         tbl = table_name(acc_name)
         load_table(client, tbl, UNIFIED_SCHEMA, rows)
 
+    print('\nCreating views...')
+    create_views(client)
     print('\nDone.')
 
 if __name__ == '__main__':
