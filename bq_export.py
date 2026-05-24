@@ -482,83 +482,77 @@ def _unified_row(level, acc_name, row, status_map=None):
     }
 
 
-def table_name(acc_name):
-    """Convert account name to valid BigQuery table name."""
-    return 'unified_' + acc_name.lower().replace(' ', '_').replace('-', '_')
-
-
 def main():
     client = get_bq_client()
     ensure_dataset(client)
 
-    # Clean up old tables that are no longer used
-    old_tables = ['unified', 'balances', 'daily', 'campaigns', 'adsets', 'ads']
+    # Clean up old per-account tables
+    old_tables = [
+        'unified_mall', 'unified_bsq', 'unified_kemet', 'unified_al_adel', 'unified_sedra',
+        'balances', 'daily', 'campaigns', 'adsets', 'ads',
+    ]
     for t in old_tables:
         ref = f'{GCP_PROJECT}.{BQ_DATASET}.{t}'
         try:
             client.delete_table(ref)
             print(f'Deleted old table: {t}')
         except Exception:
-            pass  # table doesn't exist, that's fine
+            pass
+
+    all_rows = []
 
     for acc_name, acc_id in ACCOUNTS.items():
         print(f'\nFetching {acc_name}...')
-        rows = []
 
-        campaigns  = fetch_campaigns(acc_id)
-        status_map    = {c['id']: c['status']     for c in campaigns}
-        obj_label_map = {c['id']: c['objective']  for c in campaigns}   # stable parsed label
+        campaigns     = fetch_campaigns(acc_id)
+        status_map    = {c['id']: c['status']    for c in campaigns}
+        obj_label_map = {c['id']: c['objective'] for c in campaigns}
         print(f'  campaigns: {len(campaigns)}')
 
-        # level=account — daily totals (trend charts)
+        # level=account — daily totals
         for row in fetch_daily(acc_id):
-            rows.append(_unified_row('account', acc_name, {
-                'date':             row['date'],
-                'spend':            row['spend'],
-                'impressions':      row['impressions'],
-                'reach':            row['reach'],
-                'link_clicks':      row['link_clicks'],
-                'cpm':              row['cpm'],
-                'messages':         row['messages'],
-                'cost_per_message': row['cost_per_message'],
-                'msg_spend':        row['msg_spend'],
-                'purchases':        row['purchases'],
+            all_rows.append(_unified_row('account', acc_name, {
+                'date':        row['date'],
+                'spend':       row['spend'],
+                'impressions': row['impressions'],
+                'reach':       row['reach'],
+                'link_clicks': row['link_clicks'],
+                'messages':    row['messages'],
+                'msg_spend':   row['msg_spend'],
+                'purchases':   row['purchases'],
             }, status_map=status_map))
 
-        # level=campaign — daily (objective fixed from campaign list)
+        # level=campaign
         camp_daily = fetch_campaigns_daily(acc_id)
         print(f'  campaigns_daily: {len(camp_daily)} rows')
         for row in camp_daily:
-            # Fix: use stable objective label from campaign list (same label every day)
             row['objective'] = obj_label_map.get(row['campaign_id'], row['objective'])
-            rows.append(_unified_row('campaign', acc_name, row, status_map=status_map))
+            all_rows.append(_unified_row('campaign', acc_name, row, status_map=status_map))
 
-        # level=adset — daily
+        # level=adset
         adset_daily = fetch_adsets_daily(acc_id)
         print(f'  adsets_daily: {len(adset_daily)} rows')
         for row in adset_daily:
             row['objective'] = obj_label_map.get(row['campaign_id'], row['objective'])
-            rows.append(_unified_row('adset', acc_name, row, status_map=status_map))
+            all_rows.append(_unified_row('adset', acc_name, row, status_map=status_map))
 
-        # level=ad — daily + thumbnails
+        # level=ad + thumbnails
         thumbnail_map = fetch_all_ad_thumbnails(acc_id)
         ads_daily = fetch_ads_daily(acc_id)
         print(f'  ads_daily: {len(ads_daily)} rows')
         for row in ads_daily:
-            row['objective']    = obj_label_map.get(row['campaign_id'], row['objective'])
+            row['objective']     = obj_label_map.get(row['campaign_id'], row['objective'])
             row['thumbnail_url'] = thumbnail_map.get(row.get('ad_id', ''), '')
-            rows.append(_unified_row('ad', acc_name, row, status_map=status_map))
+            all_rows.append(_unified_row('ad', acc_name, row, status_map=status_map))
 
-        # level=balance — current balance
+        # level=balance
         balance, currency, display = fetch_balance(acc_id)
-        rows.append(_unified_row('balance', acc_name, {
+        all_rows.append(_unified_row('balance', acc_name, {
             'date': TODAY, 'objective': display,
             'balance': balance, 'currency': currency,
         }, status_map=status_map))
 
-        tbl = table_name(acc_name)
-        load_table(client, tbl, UNIFIED_SCHEMA, rows)
-
+    load_table(client, 'unified', UNIFIED_SCHEMA, all_rows)
     print('\nDone.')
 
 if __name__ == '__main__':
