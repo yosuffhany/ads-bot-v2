@@ -482,27 +482,26 @@ def _unified_row(level, acc_name, row, status_map=None):
     }
 
 
+def table_name(acc_name):
+    return 'unified_' + acc_name.lower().replace(' ', '_').replace('-', '_')
+
+
 def main():
     client = get_bq_client()
     ensure_dataset(client)
 
-    # Clean up old per-account tables
-    old_tables = [
-        'unified_mall', 'unified_bsq', 'unified_kemet', 'unified_al_adel', 'unified_sedra',
-        'balances', 'daily', 'campaigns', 'adsets', 'ads',
-    ]
+    # Clean up old unused tables
+    old_tables = ['unified', 'balances', 'daily', 'campaigns', 'adsets', 'ads']
     for t in old_tables:
-        ref = f'{GCP_PROJECT}.{BQ_DATASET}.{t}'
         try:
-            client.delete_table(ref)
-            print(f'Deleted old table: {t}')
+            client.delete_table(f'{GCP_PROJECT}.{BQ_DATASET}.{t}')
+            print(f'Deleted: {t}')
         except Exception:
             pass
 
-    all_rows = []
-
     for acc_name, acc_id in ACCOUNTS.items():
         print(f'\nFetching {acc_name}...')
+        rows = []
 
         campaigns     = fetch_campaigns(acc_id)
         status_map    = {c['id']: c['status']    for c in campaigns}
@@ -511,7 +510,7 @@ def main():
 
         # level=account — daily totals
         for row in fetch_daily(acc_id):
-            all_rows.append(_unified_row('account', acc_name, {
+            rows.append(_unified_row('account', acc_name, {
                 'date':        row['date'],
                 'spend':       row['spend'],
                 'impressions': row['impressions'],
@@ -527,14 +526,14 @@ def main():
         print(f'  campaigns_daily: {len(camp_daily)} rows')
         for row in camp_daily:
             row['objective'] = obj_label_map.get(row['campaign_id'], row['objective'])
-            all_rows.append(_unified_row('campaign', acc_name, row, status_map=status_map))
+            rows.append(_unified_row('campaign', acc_name, row, status_map=status_map))
 
         # level=adset
         adset_daily = fetch_adsets_daily(acc_id)
         print(f'  adsets_daily: {len(adset_daily)} rows')
         for row in adset_daily:
             row['objective'] = obj_label_map.get(row['campaign_id'], row['objective'])
-            all_rows.append(_unified_row('adset', acc_name, row, status_map=status_map))
+            rows.append(_unified_row('adset', acc_name, row, status_map=status_map))
 
         # level=ad + thumbnails
         thumbnail_map = fetch_all_ad_thumbnails(acc_id)
@@ -543,16 +542,17 @@ def main():
         for row in ads_daily:
             row['objective']     = obj_label_map.get(row['campaign_id'], row['objective'])
             row['thumbnail_url'] = thumbnail_map.get(row.get('ad_id', ''), '')
-            all_rows.append(_unified_row('ad', acc_name, row, status_map=status_map))
+            rows.append(_unified_row('ad', acc_name, row, status_map=status_map))
 
         # level=balance
         balance, currency, display = fetch_balance(acc_id)
-        all_rows.append(_unified_row('balance', acc_name, {
+        rows.append(_unified_row('balance', acc_name, {
             'date': TODAY, 'objective': display,
             'balance': balance, 'currency': currency,
         }, status_map=status_map))
 
-    load_table(client, 'unified', UNIFIED_SCHEMA, all_rows)
+        load_table(client, table_name(acc_name), UNIFIED_SCHEMA, rows)
+
     print('\nDone.')
 
 if __name__ == '__main__':
