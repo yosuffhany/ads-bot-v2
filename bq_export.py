@@ -437,7 +437,7 @@ def load_table(client, table_name, schema, rows):
 # ── BIGQUERY VIEWS ───────────────────────────────────────────────────────────
 
 def create_views(client):
-    """Create/replace BQ views per account with pre-calculated cpm_calc & cost_per_msg_calc."""
+    """Create/replace BQ views per account with pre-calculated metrics."""
     for acc_name in ACCOUNTS:
         tbl  = table_name(acc_name)
         view = f'view_{tbl.replace("unified_", "")}'
@@ -445,8 +445,19 @@ def create_views(client):
 CREATE OR REPLACE VIEW `{GCP_PROJECT}.{BQ_DATASET}.{view}` AS
 SELECT
   *,
-  SAFE_DIVIDE(spend, impressions) * 1000          AS cpm_calc,
-  SAFE_DIVIDE(msg_spend, NULLIF(messages, 0))     AS cost_per_msg_calc
+  -- CPM صح: spend/impressions*1000 per row (يتجمع صح في Looker بـ SUM(spend)/SUM(impressions)*1000)
+  SAFE_DIVIDE(spend, impressions) * 1000                      AS cpm_calc,
+
+  -- Messages spend: الإنفاق على كامبينز الرسايل فقط
+  CASE WHEN LOWER(objective) LIKE '%message%' THEN spend ELSE 0 END  AS msg_campaign_spend,
+
+  -- Awareness spend: الإنفاق على كامبينز الأوعارنس/ريتش فقط
+  CASE WHEN objective IN ('Awareness','Reach') THEN spend ELSE 0 END  AS awareness_spend,
+
+  -- CPR للـ Awareness: cost per 1000 reach
+  CASE WHEN objective IN ('Awareness','Reach') AND reach > 0
+       THEN SAFE_DIVIDE(spend, reach) * 1000
+       ELSE 0 END                                             AS cpr_awareness
 FROM `{GCP_PROJECT}.{BQ_DATASET}.{tbl}`
 """
         try:
