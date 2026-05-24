@@ -70,12 +70,14 @@ UNIFIED_SCHEMA = [
     bigquery.SchemaField('result_label',       'STRING'),
     bigquery.SchemaField('purchases',          'INTEGER'),
     bigquery.SchemaField('messages',           'INTEGER'),
-    bigquery.SchemaField('msg_spend',          'FLOAT'),   # spend attributable to messages (additive)
-    bigquery.SchemaField('msg_campaign_spend', 'FLOAT'),   # total spend of message campaigns (additive)
-    bigquery.SchemaField('awareness_spend',    'FLOAT'),   # total spend of awareness/reach campaigns (additive)
-    bigquery.SchemaField('awareness_reach',    'INTEGER'), # reach of awareness campaigns (additive per level)
-    bigquery.SchemaField('balance',            'FLOAT'),
-    bigquery.SchemaField('currency',           'STRING'),
+    bigquery.SchemaField('msg_spend',                'FLOAT'),   # spend attr. to messages (additive)
+    bigquery.SchemaField('msg_campaign_spend',       'FLOAT'),   # campaign-level only → scorecard total ✓
+    bigquery.SchemaField('awareness_spend',          'FLOAT'),   # all levels → CPR formula in tables ✓
+    bigquery.SchemaField('awareness_reach',          'INTEGER'), # all levels → CPR formula in tables ✓
+    bigquery.SchemaField('awareness_campaign_spend', 'FLOAT'),   # campaign-level only → scorecard total ✓
+    bigquery.SchemaField('cost_per_result',          'FLOAT'),   # per-row smart cost
+    bigquery.SchemaField('balance',                  'FLOAT'),
+    bigquery.SchemaField('currency',                 'STRING'),
 ]
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -447,6 +449,7 @@ def _unified_row(level, acc_name, row, status_map=None):
 
     is_messages  = 'message' in obj_lower
     is_awareness = objective in ('Awareness', 'Reach')
+    is_camp      = level == 'campaign'   # objective-split fields only at campaign level
 
     return {
         'date':               row.get('date', None),
@@ -474,9 +477,18 @@ def _unified_row(level, acc_name, row, status_map=None):
         'purchases':          row.get('purchases', 0),
         'messages':           row.get('messages', 0),
         'msg_spend':          row.get('msg_spend', 0.0),
-        'msg_campaign_spend': spend if is_messages  else 0.0,
+        # campaign-level only → scorecard totals صح بدون فلتر
+        'msg_campaign_spend':       (spend if is_messages  else 0.0) if is_camp else 0.0,
+        'awareness_campaign_spend': (spend if is_awareness else 0.0) if is_camp else 0.0,
+        # all levels → CPR formula في الجداول صح
         'awareness_spend':    spend if is_awareness else 0.0,
         'awareness_reach':    reach if is_awareness else 0,
+        # cost per result — per row
+        'cost_per_result':    round(
+            row.get('msg_spend', 0.0) / row.get('messages', 0) if is_messages and row.get('messages', 0) > 0
+            else spend / (reach / 1000) if is_awareness and reach > 0
+            else spend / row.get('results', row.get('result', 0)) if row.get('results', row.get('result', 0)) > 0
+            else 0.0, 2),
         'balance':            row.get('balance', 0.0),
         'currency':           row.get('currency', ''),
     }
