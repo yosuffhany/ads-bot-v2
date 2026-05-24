@@ -454,10 +454,9 @@ SELECT
   -- Awareness spend: الإنفاق على كامبينز الأوعارنس/ريتش فقط
   CASE WHEN objective IN ('Awareness','Reach') THEN spend ELSE 0 END  AS awareness_spend,
 
-  -- CPR للـ Awareness: cost per 1000 reach
-  CASE WHEN objective IN ('Awareness','Reach') AND reach > 0
-       THEN SAFE_DIVIDE(spend, reach) * 1000
-       ELSE 0 END                                             AS cpr_awareness
+  -- Awareness reach: الريتش بتاع الأوعارنس بس (additive → يتجمع صح)
+  CASE WHEN objective IN ('Awareness','Reach') THEN reach ELSE 0 END AS awareness_reach
+  -- في Looker Studio: SUM(awareness_spend) / SUM(awareness_reach) * 1000 = CPR صح
 FROM `{GCP_PROJECT}.{BQ_DATASET}.{tbl}`
 """
         try:
