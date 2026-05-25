@@ -75,11 +75,7 @@ def find_account(text):
                 return a
     return None
 
-BILLING_THRESHOLD_KEYS = {'essam'}  # accounts where balance API is unreliable
-
 def get_balance_raw(acc):
-    if acc['key'] in BILLING_THRESHOLD_KEYS:
-        return f"{acc['label']}: يراجع يدوياً (billing threshold)", None
     try:
         r = requests.get(
             f"https://graph.facebook.com/v19.0/{acc['id']}",
@@ -97,6 +93,11 @@ def get_balance_raw(acc):
         return f"{acc['label']}: خطأ — {err_msg}", None
 
     currency = d.get('currency', 'EGP')
+
+    # DEBUG for essam only
+    if acc['key'] == 'essam':
+        fsd = d.get('funding_source_details', {})
+        return f"{acc['label']}: fsd={fsd} | balance={d.get('balance')} | spend_cap={d.get('spend_cap')} | amount_spent={d.get('amount_spent')}", None
 
     # 1) funding_source_details display_string
     display = d.get('funding_source_details', {}).get('display_string', '')
