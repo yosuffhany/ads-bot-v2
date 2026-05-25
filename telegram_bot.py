@@ -23,7 +23,7 @@ if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
 TEAM_IDS   = [-1003900496674]
-WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'sedra', 'essam', 'showpink', 'belal'}
+WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'sedra', 'showpink', 'belal'}
 THRESHOLDS = [1000, 500]
 ALERTS_FILE = '/tmp/sent_alerts.json'
 
