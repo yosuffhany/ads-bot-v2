@@ -23,7 +23,7 @@ if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
 TEAM_IDS   = [-1003900496674]
-WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'sedra'}
+WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'sedra', 'essam', 'showpink', 'belal'}
 THRESHOLDS = [1000, 500]
 ALERTS_FILE = '/tmp/sent_alerts.json'
 
@@ -49,40 +49,15 @@ MESSAGES_500 = [
 ]
 
 ACCOUNTS = [
-    {'key': 'totti',        'id': 'act_3046772235501325', 'label': 'Totti Gallery',    'ar': ['توتي', 'توتى', 'توتي جاليري']},
-    {'key': 'maspipe',      'id': 'act_1774284989787459', 'label': 'Mas-Pipe',         'ar': ['ماس بيب', 'ماسبيب', 'ماس-بيب', 'مسبيب']},
-    {'key': 'sofy',         'id': 'act_650311242463923',  'label': 'Sofy',             'ar': ['صوفي', 'صوفى', 'سوفي']},
-    {'key': 'menna',        'id': 'act_10150765286975596','label': 'Menna Hossam',     'ar': ['منه', 'منة', 'منه حسام', 'منة حسام']},
-    {'key': 'bison',        'id': 'act_465578978509965',  'label': 'Bison Ads',        'ar': ['بايسون', 'بيسون']},
-    {'key': 'effect1',      'id': 'act_5394586653914394', 'label': 'Effect ADV 01',    'ar': ['افيكت 1', 'إيفيكت 1', 'ايفيكت 01']},
-    {'key': 'eladel_old',   'id': 'act_276905741576386',  'label': 'Al Adel (old)',    'ar': ['العادل القديم', 'الادل القديم']},
-    {'key': 'fawry1',       'id': 'act_648289100485879',  'label': 'Effect Fawry 1',   'ar': ['فوري 1', 'فوري واحد']},
-    {'key': 'essam',        'id': 'act_325431983464353',  'label': 'Mohamed Essam',    'ar': ['محمد عصام', 'عصام']},
-    {'key': 'eladel',       'id': 'act_1392109118185589', 'label': 'Al Adel',          'ar': ['العادل', 'الادل', 'ادل', 'عادل', 'el adel', 'aladel']},
-    {'key': 'sua',          'id': 'act_925588948913339',  'label': 'Effect SUA',       'ar': ['سوا', 'اس يو ايه']},
-    {'key': 'mall',         'id': 'act_2001687506868513', 'label': 'Mall',             'ar': ['مول', 'مال', 'المول']},
-    {'key': 'kemet',        'id': 'act_345674018149436',  'label': 'Kemet',            'ar': ['كيميت', 'كيمت']},
-    {'key': 'divine',       'id': 'act_434106209039266',  'label': 'Divine by JJ',     'ar': ['ديفاين', 'دايفاين', 'دفاين']},
-    {'key': 'abdelfattah',  'id': 'act_2378819405831678', 'label': 'Abdelfattah',      'ar': ['عبدالفتاح', 'عبد الفتاح']},
-    {'key': 'bsq',          'id': 'act_841897980911694',  'label': 'BSQ',              'ar': ['بي اس كيو', 'بي إس كيو', 'بيإسكيو']},
-    {'key': 'padel',        'id': 'act_1289017779213803', 'label': 'Play Padel',       'ar': ['بلاي بادل', 'بادل', 'padel']},
-    {'key': 'effect3egp',   'id': 'act_568221719329142',  'label': 'Effect 3',         'ar': ['افيكت ثري', 'ايفيكت 3']},
-    {'key': 'fawry2',       'id': 'act_878027737746620',  'label': 'Effect Fawry 2',   'ar': ['فوري 2', 'فوري اتنين']},
-    {'key': 'studio',       'id': 'act_580360561671663',  'label': 'Effect Studio',    'ar': ['ستوديو', 'افيكت ستوديو']},
-    {'key': 'ideasport',    'id': 'act_859756096002270',  'label': 'Idea Sport',       'ar': ['ايديا سبورت', 'فكرة سبورت']},
-    {'key': 'sara',         'id': 'act_1279182850047520', 'label': 'Sara Essam',       'ar': ['سارة عصام', 'سارا عصام', 'سارة']},
-    {'key': 'mriya',        'id': 'act_1212371947222820', 'label': 'Mriya Homes',      'ar': ['مريا', 'مريا هومز', 'مريا هوم']},
-    {'key': 'tamra1',       'id': 'act_1272360541135475', 'label': 'Tamra & Balaha 1', 'ar': ['تمرة 1', 'تمرة وبلحة 1', 'تمرة وبلحة']},
-    {'key': 'yass',         'id': 'act_1489770438885179', 'label': 'Yass Coffee',      'ar': ['ياس', 'ياس كوفي', 'ياس قهوة']},
-    {'key': 'tamra2',       'id': 'act_1818266555783618', 'label': 'Tamra & Balaha 2', 'ar': ['تمرة 2', 'تمرة وبلحة 2']},
-    {'key': 'showpink',     'id': 'act_1803969103895553', 'label': 'ShowPink',         'ar': ['شوبينك', 'شو بينك', 'شو-بينك']},
-    {'key': 'move',         'id': 'act_710148088755737',  'label': 'Move',             'ar': ['موف']},
-    {'key': 'vip',          'id': 'act_1123106382965581', 'label': 'Vip Perfume',      'ar': ['فيب', 'فيب برفيوم']},
-    {'key': 'yaqoot',       'id': 'act_769479552712823',  'label': 'YaqootEG',         'ar': ['ياقوت', 'ياقوت إيجي']},
-    {'key': 'belal',        'id': 'act_1091777362163635', 'label': 'Belal Khier',      'ar': ['بلال', 'بلال خير']},
-    {'key': 'yakootcoffee', 'id': 'act_1136771131607775', 'label': 'Yakoot Coffee',    'ar': ['ياقوت كوفي', 'ياقوت قهوة']},
-    {'key': 'looklook',     'id': 'act_879890704620098',  'label': 'Look Look',        'ar': ['لوك لوك', 'لوكلوك']},
-    {'key': 'sedra',        'id': 'act_1303633554699002', 'label': 'Sedra',            'ar': ['سيدرا', 'سدرا', 'سدره', 'سيدره']},
+    {'key': 'eladel',   'id': 'act_1392109118185589', 'label': 'Al Adel',       'ar': ['العادل', 'الادل', 'ادل', 'عادل', 'el adel', 'aladel']},
+    {'key': 'bsq',      'id': 'act_841897980911694',  'label': 'BSQ',           'ar': ['بي اس كيو', 'بي إس كيو', 'بيإسكيو']},
+    {'key': 'mall',     'id': 'act_2001687506868513', 'label': 'Mall',          'ar': ['مول', 'مال', 'المول']},
+    {'key': 'kemet',    'id': 'act_345674018149436',  'label': 'Kemet',         'ar': ['كيميت', 'كيمت']},
+    {'key': 'maspipe',  'id': 'act_1774284989787459', 'label': 'Mas-Pipe',      'ar': ['ماس بيب', 'ماسبيب', 'ماس-بيب', 'مسبيب']},
+    {'key': 'essam',    'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام']},
+    {'key': 'showpink', 'id': 'act_1803969103895553', 'label': 'ShowPink',      'ar': ['شوبينك', 'شو بينك', 'شو-بينك']},
+    {'key': 'belal',    'id': 'act_1091777362163635', 'label': 'Belal Khier',   'ar': ['بلال', 'بلال خير']},
+    {'key': 'sedra',    'id': 'act_1303633554699002', 'label': 'Sedra',         'ar': ['سيدرا', 'سدرا', 'سدره', 'سيدره']},
 ]
 
 ACCOUNTS_BY_INDEX = {i+1: a for i, a in enumerate(ACCOUNTS)}

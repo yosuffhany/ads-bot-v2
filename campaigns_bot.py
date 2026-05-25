@@ -27,11 +27,15 @@ if not TELEGRAM_TOKEN:
 # ── ACCOUNTS ──────────────────────────────────────────────────────────────────
 
 ACCOUNTS = [
-    {'key': 'mall',   'id': 'act_2001687506868513', 'label': 'Mall',    'ar': ['مول', 'مال', 'المول']},
-    {'key': 'bsq',    'id': 'act_841897980911694',  'label': 'BSQ',     'ar': ['بي اس كيو', 'بيإسكيو']},
-    {'key': 'kemet',  'id': 'act_345674018149436',  'label': 'Kemet',   'ar': ['كيميت', 'كيمت']},
-    {'key': 'eladel', 'id': 'act_1392109118185589', 'label': 'Al Adel', 'ar': ['العادل', 'الادل', 'عادل', 'ادل']},
-    {'key': 'sedra',  'id': 'act_1303633554699002', 'label': 'Sedra',   'ar': ['سيدرا', 'سدرا', 'سدره']},
+    {'key': 'eladel',   'id': 'act_1392109118185589', 'label': 'Al Adel',       'ar': ['العادل', 'الادل', 'ادل', 'عادل']},
+    {'key': 'bsq',      'id': 'act_841897980911694',  'label': 'BSQ',           'ar': ['بي اس كيو', 'بيإسكيو']},
+    {'key': 'mall',     'id': 'act_2001687506868513', 'label': 'Mall',          'ar': ['مول', 'مال', 'المول']},
+    {'key': 'kemet',    'id': 'act_345674018149436',  'label': 'Kemet',         'ar': ['كيميت', 'كيمت']},
+    {'key': 'maspipe',  'id': 'act_1774284989787459', 'label': 'Mas-Pipe',      'ar': ['ماس بيب', 'ماسبيب', 'ماس-بيب']},
+    {'key': 'essam',    'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام']},
+    {'key': 'showpink', 'id': 'act_1803969103895553', 'label': 'ShowPink',      'ar': ['شوبينك', 'شو بينك']},
+    {'key': 'belal',    'id': 'act_1091777362163635', 'label': 'Belal Khier',   'ar': ['بلال', 'بلال خير']},
+    {'key': 'sedra',    'id': 'act_1303633554699002', 'label': 'Sedra',         'ar': ['سيدرا', 'سدرا', 'سدره']},
 ]
 ACCOUNTS_BY_KEY = {a['key']: a for a in ACCOUNTS}
 
