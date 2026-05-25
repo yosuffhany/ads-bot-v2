@@ -79,7 +79,7 @@ def get_balance_raw(acc):
     try:
         r = requests.get(
             f"https://graph.facebook.com/v19.0/{acc['id']}",
-            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details'},
+            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details,prepaid_credit'},
             timeout=15
         )
         d = r.json()
@@ -90,9 +90,19 @@ def get_balance_raw(acc):
     if 'error' in d:
         return f"{acc['label']}: خطأ", None
 
+    logger.info(f"[balance_raw] {acc['label']}: {d}")
+
     currency = d.get('currency', '')
-    display  = d.get('funding_source_details', {}).get('display_string', '')
-    match    = re.search(r'\((.+?)\)', display)
+
+    # 1) Try prepaid_credit (most accurate available funds)
+    prepaid = d.get('prepaid_credit', {})
+    if prepaid.get('amount') is not None:
+        value = float(prepaid['amount'])
+        return f"{acc['label']}: {currency} {value:,.2f}", value
+
+    # 2) Try funding_source_details display_string
+    display = d.get('funding_source_details', {}).get('display_string', '')
+    match   = re.search(r'\((.+?)\)', display)
     if match:
         amount_str = match.group(1)
         num = re.sub(r'[^\d.]', '', amount_str.replace(',', ''))
@@ -102,6 +112,7 @@ def get_balance_raw(acc):
             value = None
         return f"{acc['label']}: {amount_str}", value
 
+    # 3) Fallback: balance field (cents / 100)
     raw   = int(d.get('balance', 0))
     value = raw / 100
     return f"{acc['label']}: {currency} {value:,.2f}", value
