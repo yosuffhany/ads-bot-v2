@@ -87,20 +87,19 @@ def get_balance_raw(acc):
         logger.error(f"Request failed for {acc['label']}: {e}")
         return f"{acc['label']}: خطأ في الاتصال", None
 
-    logger.info(f"[balance_raw] {acc['label']}: {d}")
-
     if 'error' in d:
-        return f"{acc['label']}: خطأ", None
+        logger.warning(f"API error for {acc['label']}: {d['error']}")
+        return f"{acc['label']}: لا يوجد وصول للاكونت", None
 
-    currency = d.get('currency', '')
+    currency = d.get('currency', 'EGP')
 
-    # 1) Try prepaid_credit (most accurate available funds)
+    # 1) prepaid_credit — available funds (most accurate)
     prepaid = d.get('prepaid_credit', {})
     if prepaid.get('amount') is not None:
         value = float(prepaid['amount'])
         return f"{acc['label']}: {currency} {value:,.2f}", value
 
-    # 2) Try funding_source_details display_string
+    # 2) funding_source_details display_string
     display = d.get('funding_source_details', {}).get('display_string', '')
     match   = re.search(r'\((.+?)\)', display)
     if match:
@@ -108,11 +107,11 @@ def get_balance_raw(acc):
         num = re.sub(r'[^\d.]', '', amount_str.replace(',', ''))
         try:
             value = float(num)
+            return f"{acc['label']}: {amount_str}", value
         except Exception:
-            value = None
-        return f"{acc['label']}: {amount_str}", value
+            pass
 
-    # 3) Fallback: balance field (cents / 100)
+    # 3) fallback: balance field (cents / 100)
     raw   = int(d.get('balance', 0))
     value = raw / 100
     return f"{acc['label']}: {currency} {value:,.2f}", value
