@@ -109,7 +109,7 @@ def get_balance_raw(acc):
     # 2) fallback: balance field (cents / 100)
     raw   = int(d.get('balance', 0))
     value = raw / 100
-    return f"{acc['label']}: {currency} {value:,.2f}", value
+    return f"{acc['label']}: {currency} {value:,.2f} [display={display!r}]", value
 
 def get_balance(acc):
     text, _ = get_balance_raw(acc)
