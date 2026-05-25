@@ -88,8 +88,9 @@ def get_balance_raw(acc):
         return f"{acc['label']}: خطأ في الاتصال", None
 
     if 'error' in d:
+        err_msg = d['error'].get('message', str(d['error']))
         logger.warning(f"API error for {acc['label']}: {d['error']}")
-        return f"{acc['label']}: لا يوجد وصول للاكونت", None
+        return f"{acc['label']}: خطأ — {err_msg}", None
 
     currency = d.get('currency', 'EGP')
 
