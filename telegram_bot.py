@@ -96,24 +96,25 @@ def get_balance_raw(acc):
 
     # 1) funding_source_details display_string
     display = d.get('funding_source_details', {}).get('display_string', '')
-    match   = re.search(r'\((.+?)\)', display)
-    if match:
-        amount_str = match.group(1)
-        num = re.sub(r'[^\d.]', '', amount_str.replace(',', ''))
-        try:
-            value = float(num)
-            return f"{acc['label']}: {amount_str}", value
-        except Exception:
-            pass
+    if display:
+        # normalize Arabic-Indic digits → ASCII
+        ar_map = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+        norm = display.translate(ar_map).replace(',', '')
+        # try parentheses first: "Visa (EGP 997.45)"
+        match = re.search(r'\(([^)]*[\d][^)]*)\)', norm)
+        if not match:
+            # try without parentheses: "Fawry EGP 997.45" or "فوري: 997.45"
+            match = re.search(r'([\d]+\.[\d]+|[\d]{3,})', norm)
+        if match:
+            num = re.sub(r'[^\d.]', '', match.group(1))
+            try:
+                value = float(num)
+                if value > 10:
+                    return f"{acc['label']}: {currency} {value:,.2f}", value
+            except Exception:
+                pass
 
-    # 2) spend_cap - amount_spent (billing threshold accounts)
-    spend_cap = int(d.get('spend_cap', 0))
-    if spend_cap > 0:
-        spent = float(d.get('amount_spent', 0))
-        value = (spend_cap - spent) / 100
-        return f"{acc['label']}: {currency} {value:,.2f}", value
-
-    # 3) fallback: balance field (cents / 100)
+    # 2) fallback: balance field (cents / 100)
     raw   = int(d.get('balance', 0))
     value = raw / 100
     return f"{acc['label']}: {currency} {value:,.2f}", value
