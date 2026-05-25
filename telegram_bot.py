@@ -22,7 +22,7 @@ LONG_LIVED_TOKEN = os.environ.get('LONG_LIVED_TOKEN')   or os.getenv('LONG_LIVED
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
-TEAM_IDS   = [-1002900496674]
+TEAM_IDS   = [-1003900496674]
 WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'sedra'}
 THRESHOLDS = [1000, 500]
 ALERTS_FILE = '/tmp/sent_alerts.json'
