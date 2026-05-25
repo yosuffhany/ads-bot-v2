@@ -5,8 +5,8 @@ Ads Telegram Bot — Polling mode for Railway hosting
 """
 import os, re, random, requests, logging, json
 from dotenv import load_dotenv
-from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, filters, ContextTypes
 
 load_dotenv()
 
@@ -22,7 +22,7 @@ LONG_LIVED_TOKEN = os.environ.get('LONG_LIVED_TOKEN')   or os.getenv('LONG_LIVED
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
-TEAM_IDS   = [-5184465495]
+TEAM_IDS   = [-1002900496674]
 WATCH_KEYS = {'mall', 'kemet', 'bsq', 'eladel', 'maspipe', 'sedra'}
 THRESHOLDS = [1000, 500]
 ALERTS_FILE = '/tmp/sent_alerts.json'
@@ -195,6 +195,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مش فاهم 🤔\n\nجرب:\n- كل — عرض الاكونتات\n- ابعت اسم الاكونت او رقمه"
     )
 
+def kb_accounts():
+    rows = []
+    for i in range(0, len(ACCOUNTS), 3):
+        rows.append([
+            InlineKeyboardButton(a['label'], callback_data=f"bal:{a['key']}")
+            for a in ACCOUNTS[i:i+3]
+        ])
+    return InlineKeyboardMarkup(rows)
+
+async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("اختار الاكونت 👇", reply_markup=kb_accounts())
+
+async def on_balance_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not query.data.startswith('bal:'):
+        return
+    key = query.data.split(':')[1]
+    acc = next((a for a in ACCOUNTS if a['key'] == key), None)
+    if not acc:
+        await query.edit_message_text("مش لاقي الاكونت ده.")
+        return
+    await query.edit_message_text("⏳ جاري الجلب...")
+    balance_text = get_balance(acc)
+    await query.edit_message_text(balance_text, reply_markup=kb_accounts())
+
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: `{update.message.from_user.id}`", parse_mode='Markdown')
 
@@ -219,9 +245,11 @@ async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler('balance', cmd_balance))
     app.add_handler(CommandHandler('myid', myid))
     app.add_handler(CommandHandler('test', test_cmd))
     app.add_handler(CommandHandler('watched', watched_cmd))
+    app.add_handler(CallbackQueryHandler(on_balance_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.job_queue.run_repeating(check_balances, interval=7200, first=60)
     logger.info("Bot running...")

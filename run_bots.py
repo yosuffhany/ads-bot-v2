@@ -1,14 +1,21 @@
 """
 Runs both Telegram bots in parallel threads.
 """
-import threading, subprocess, sys, os
-
-bots = ['telegram_bot.py', 'campaigns_bot.py']
+import subprocess, sys, threading, os
 
 def run(script):
-    subprocess.run([sys.executable, script], cwd=os.path.dirname(os.path.abspath(__file__)))
+    print(f"[run_bots] starting {script}", flush=True)
+    proc = subprocess.Popen(
+        [sys.executable, '-u', script],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+    proc.wait()
+    print(f"[run_bots] {script} exited with code {proc.returncode}", flush=True)
 
-threads = [threading.Thread(target=run, args=(b,), daemon=False) for b in bots]
+threads = [threading.Thread(target=run, args=(b,), daemon=False)
+           for b in ['telegram_bot.py', 'campaigns_bot.py']]
 for t in threads:
     t.start()
 for t in threads:
