@@ -230,10 +230,10 @@ async def rawbal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     r = requests.get(
         f"https://graph.facebook.com/v19.0/{acc['id']}",
         params={'access_token': LONG_LIVED_TOKEN,
-                'fields': 'balance,currency,funding_source_details,spend_cap,amount_spent'},
+                'fields': 'balance,currency,spend_cap,amount_spent,funding_source_details{id,display_string,type,balance,remaining_balance,available_balance,credit_card_type}'},
         timeout=15
     )
-    await update.message.reply_text(str(r.json())[:3000])
+    await update.message.reply_text(str(r.json())[:3800])
 
 async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != 932647337:
