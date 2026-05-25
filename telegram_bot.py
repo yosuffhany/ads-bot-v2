@@ -79,7 +79,7 @@ def get_balance_raw(acc):
     try:
         r = requests.get(
             f"https://graph.facebook.com/v19.0/{acc['id']}",
-            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details'},
+            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details,spend_cap,amount_spent'},
             timeout=15
         )
         d = r.json()
@@ -106,10 +106,17 @@ def get_balance_raw(acc):
         except Exception:
             pass
 
-    # 2) fallback: balance field (cents / 100)
+    # 2) spend_cap - amount_spent (billing threshold accounts)
+    spend_cap = int(d.get('spend_cap', 0))
+    if spend_cap > 0:
+        spent = float(d.get('amount_spent', 0))
+        value = (spend_cap - spent) / 100
+        return f"{acc['label']}: {currency} {value:,.2f}", value
+
+    # 3) fallback: balance field (cents / 100)
     raw   = int(d.get('balance', 0))
     value = raw / 100
-    return f"{acc['label']}: {currency} {value:,.2f} [display={display!r}]", value
+    return f"{acc['label']}: {currency} {value:,.2f}", value
 
 def get_balance(acc):
     text, _ = get_balance_raw(acc)
