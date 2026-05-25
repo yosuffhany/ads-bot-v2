@@ -87,10 +87,10 @@ def get_balance_raw(acc):
         logger.error(f"Request failed for {acc['label']}: {e}")
         return f"{acc['label']}: خطأ في الاتصال", None
 
+    logger.info(f"[balance_raw] {acc['label']}: {d}")
+
     if 'error' in d:
         return f"{acc['label']}: خطأ", None
-
-    logger.info(f"[balance_raw] {acc['label']}: {d}")
 
     currency = d.get('currency', '')
 
