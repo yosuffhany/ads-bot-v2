@@ -169,19 +169,32 @@ def parse_insights(ins, objective_raw):
     msg_cost = next((c for c in costs if c['action_type'] == 'onsite_conversion.messaging_conversation_started_7d'), None)
     cpm_msg  = round(float(msg_cost['value']) if msg_cost else (spend/messages if messages else 0), 2)
 
+    ACTION_LABELS = {
+        'onsite_conversion.messaging_conversation_started_7d': 'رسالة',
+        'offsite_conversion.fb_pixel_purchase':                'شراء',
+        'onsite_conversion.purchase':                          'شراء',
+        'onsite_conversion.lead_grouped':                      'ليد',
+        'lead':                                                'ليد',
+        'like':                                                'لايك بيدج',
+        'post_engagement':                                     'تفاعل',
+        'video_view':                                          'مشاهدة فيديو',
+        'link_click':                                          'كليك',
+        'omni_add_to_cart':                                    'أضاف للسلة',
+        'omni_initiated_checkout':                             'بدأ الشراء',
+    }
+
     if obj in AWARENESS_OBJS:
-        results, result_label = reach, 'Reach'
+        results, result_label = reach, 'ريتش'
         cpr = round(spend/(reach/1000), 2) if reach else 0
     else:
-        results, cpr, result_label = 0, 0, 'Results'
-        for at in ['onsite_conversion.messaging_conversation_started_7d',
-                   'offsite_conversion.fb_pixel_purchase','onsite_conversion.purchase',
-                   'onsite_conversion.lead_grouped','lead']:
+        results, cpr, result_label = 0, 0, 'نتيجة'
+        for at, lbl in ACTION_LABELS.items():
             act = next((a for a in actions if a['action_type'] == at), None)
             if act:
-                results = int(float(act['value']))
-                cost    = next((c for c in costs if c['action_type'] == at), None)
-                cpr     = round(float(cost['value']) if cost else (spend/results if results else 0), 2)
+                results      = int(float(act['value']))
+                result_label = lbl
+                cost         = next((c for c in costs if c['action_type'] == at), None)
+                cpr          = round(float(cost['value']) if cost else (spend/results if results else 0), 2)
                 break
 
     cpm      = round(spend/impr*1000, 2) if impr else 0
