@@ -79,7 +79,7 @@ def get_balance_raw(acc):
     try:
         r = requests.get(
             f"https://graph.facebook.com/v19.0/{acc['id']}",
-            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details,spend_cap,amount_spent'},
+            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details'},
             timeout=15
         )
         d = r.json()
@@ -93,11 +93,6 @@ def get_balance_raw(acc):
         return f"{acc['label']}: خطأ — {err_msg}", None
 
     currency = d.get('currency', 'EGP')
-
-    # DEBUG for essam only
-    if acc['key'] == 'essam':
-        fsd = d.get('funding_source_details', {})
-        return f"{acc['label']}: fsd={fsd} | balance={d.get('balance')} | spend_cap={d.get('spend_cap')} | amount_spent={d.get('amount_spent')}", None
 
     # 1) funding_source_details display_string
     display = d.get('funding_source_details', {}).get('display_string', '')
