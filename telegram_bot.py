@@ -222,7 +222,10 @@ async def on_balance_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text(balance_text, reply_markup=kb_accounts())
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Your ID: `{update.message.from_user.id}`", parse_mode='Markdown')
+    await update.message.reply_text(
+        f"User ID: `{update.message.from_user.id}`\nChat ID: `{update.message.chat.id}`",
+        parse_mode='Markdown'
+    )
 
 async def test_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != 932647337:
