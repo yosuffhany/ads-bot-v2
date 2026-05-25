@@ -221,6 +221,20 @@ async def test_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await check_balances(context)
     await update.message.reply_text("خلص الفحص")
 
+async def rawbal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != 932647337:
+        return
+    acc = next((a for a in ACCOUNTS if a['key'] == 'essam'), None)
+    if not acc:
+        return
+    r = requests.get(
+        f"https://graph.facebook.com/v19.0/{acc['id']}",
+        params={'access_token': LONG_LIVED_TOKEN,
+                'fields': 'balance,currency,funding_source_details,spend_cap,amount_spent'},
+        timeout=15
+    )
+    await update.message.reply_text(str(r.json())[:3000])
+
 async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != 932647337:
         return
@@ -238,6 +252,7 @@ def build_app():
     app.add_handler(CommandHandler('balance', cmd_balance))
     app.add_handler(CommandHandler('myid', myid))
     app.add_handler(CommandHandler('test', test_cmd))
+    app.add_handler(CommandHandler('rawbal', rawbal_cmd))
     app.add_handler(CommandHandler('watched', watched_cmd))
     app.add_handler(CallbackQueryHandler(on_balance_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
