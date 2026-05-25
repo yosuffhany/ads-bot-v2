@@ -79,7 +79,7 @@ def get_balance_raw(acc):
     try:
         r = requests.get(
             f"https://graph.facebook.com/v19.0/{acc['id']}",
-            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details,prepaid_credit'},
+            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details'},
             timeout=15
         )
         d = r.json()
@@ -94,13 +94,7 @@ def get_balance_raw(acc):
 
     currency = d.get('currency', 'EGP')
 
-    # 1) prepaid_credit — available funds (most accurate)
-    prepaid = d.get('prepaid_credit', {})
-    if prepaid.get('amount') is not None:
-        value = float(prepaid['amount'])
-        return f"{acc['label']}: {currency} {value:,.2f}", value
-
-    # 2) funding_source_details display_string
+    # 1) funding_source_details display_string
     display = d.get('funding_source_details', {}).get('display_string', '')
     match   = re.search(r'\((.+?)\)', display)
     if match:
@@ -112,7 +106,7 @@ def get_balance_raw(acc):
         except Exception:
             pass
 
-    # 3) fallback: balance field (cents / 100)
+    # 2) fallback: balance field (cents / 100)
     raw   = int(d.get('balance', 0))
     value = raw / 100
     return f"{acc['label']}: {currency} {value:,.2f}", value
