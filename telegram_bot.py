@@ -175,7 +175,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     acc = find_account(text)
     if acc:
         await update.message.reply_text("جاري الجلب...")
-        await update.message.reply_text(get_balance(acc))
+        if update.message.from_user.id == 932647337 and acc['key'] == 'essam':
+            r = requests.get(
+                f"https://graph.facebook.com/v19.0/{acc['id']}",
+                params={'access_token': LONG_LIVED_TOKEN,
+                        'fields': 'balance,currency,spend_cap,amount_spent,funding_source_details{id,display_string,type,balance,remaining_balance,available_balance}'},
+                timeout=15
+            )
+            await update.message.reply_text(str(r.json())[:3800])
+        else:
+            await update.message.reply_text(get_balance(acc))
         return
 
     await update.message.reply_text(
