@@ -586,14 +586,16 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: <code>{update.message.from_user.id}</code>", parse_mode='HTML')
 
 
-def main():
+def build_app():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('report', cmd_report))
     app.add_handler(CommandHandler('myid',   myid))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("Campaigns bot running...")
-    app.run_polling()
+    return app
+
+def main():
+    build_app().run_polling(drop_pending_updates=True)
 
 
 if __name__ == '__main__':

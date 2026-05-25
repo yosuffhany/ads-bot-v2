@@ -243,7 +243,7 @@ async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"{display} ({icon})" if value else display)
     await update.message.reply_text('\n'.join(lines))
 
-def main():
+def build_app():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('balance', cmd_balance))
     app.add_handler(CommandHandler('myid', myid))
@@ -252,8 +252,10 @@ def main():
     app.add_handler(CallbackQueryHandler(on_balance_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.job_queue.run_repeating(check_balances, interval=7200, first=60)
-    logger.info("Bot running...")
-    app.run_polling()
+    return app
+
+def main():
+    build_app().run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
