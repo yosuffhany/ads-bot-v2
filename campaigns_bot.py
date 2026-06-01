@@ -176,31 +176,45 @@ def parse_insights(ins, objective_raw):
         'onsite_conversion.lead_grouped':                      'ليد',
         'lead':                                                'ليد',
         'like':                                                'لايك بيدج',
-        'post_engagement':                                     'تفاعل',
-        'video_view':                                          'مشاهدة فيديو',
-        'link_click':                                          'كليك',
         'landing_page_view':                                   'زيارة موقع',
         'visit_instagram_profile':                             'زيارة بروفايل',
-        'page_engagement':                                     'تفاعل بيدج',
         'omni_add_to_cart':                                    'أضاف للسلة',
         'omni_initiated_checkout':                             'بدأ الشراء',
+        'link_click':                                          'كليك',
+        'video_view':                                          'مشاهدة فيديو',
+        'post_engagement':                                     'تفاعل بيدج',
+    }
+
+    # objective-based priority: each objective tries its relevant actions first
+    OBJECTIVE_PRIORITY = {
+        'OUTCOME_TRAFFIC':     ['landing_page_view', 'visit_instagram_profile',
+                                'onsite_conversion.messaging_conversation_started_7d', 'link_click'],
+        'OUTCOME_ENGAGEMENT':  ['like', 'onsite_conversion.messaging_conversation_started_7d',
+                                'video_view', 'post_engagement'],
+        'OUTCOME_LEADS':       ['onsite_conversion.lead_grouped', 'lead',
+                                'onsite_conversion.messaging_conversation_started_7d'],
+        'OUTCOME_SALES':       ['offsite_conversion.fb_pixel_purchase', 'onsite_conversion.purchase',
+                                'omni_initiated_checkout', 'omni_add_to_cart',
+                                'onsite_conversion.messaging_conversation_started_7d'],
     }
 
     if obj in AWARENESS_OBJS:
         results, result_label = reach, 'ريتش'
         cpr = round(spend/(reach/1000), 2) if reach else 0
     else:
-        # pick action with highest value (not first match)
         results, cpr, result_label = 0, 0, 'نتيجة'
-        for at, lbl in ACTION_LABELS.items():
+        priority = OBJECTIVE_PRIORITY.get(obj, list(ACTION_LABELS.keys()))
+        for at in priority:
+            lbl = ACTION_LABELS.get(at)
+            if not lbl:
+                continue
             act = next((a for a in actions if a['action_type'] == at), None)
             if act:
-                v = int(float(act['value']))
-                if v > results:
-                    results      = v
-                    result_label = lbl
-                    cost         = next((c for c in costs if c['action_type'] == at), None)
-                    cpr          = round(float(cost['value']) if cost else (spend/v if v else 0), 2)
+                results      = int(float(act['value']))
+                result_label = lbl
+                cost         = next((c for c in costs if c['action_type'] == at), None)
+                cpr          = round(float(cost['value']) if cost else (spend/results if results else 0), 2)
+                break
 
     cpm      = round(spend/impr*1000, 2) if impr else 0
     currency = ins.get('account_currency', 'EGP')
