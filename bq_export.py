@@ -26,15 +26,39 @@ ACCOUNTS = {
 }
 
 AWARENESS_OBJECTIVES = {'OUTCOME_AWARENESS', 'OUTCOME_REACH', 'REACH', 'AWARENESS'}
-ACTION_PRIORITY = [
-    'onsite_conversion.messaging_conversation_started_7d',
-    'offsite_conversion.fb_pixel_purchase',
-    'onsite_conversion.purchase',
-    'onsite_conversion.lead_grouped',
-    'lead',
-]
 PURCHASE_ACTIONS = {'offsite_conversion.fb_pixel_purchase', 'onsite_conversion.purchase'}
-INSIGHTS_FIELDS  = 'spend,cpm,reach,impressions,clicks,inline_link_clicks,actions,cost_per_action_type'
+INSIGHTS_FIELDS  = 'spend,cpm,reach,impressions,clicks,inline_link_clicks,actions,cost_per_action_type,results,cost_per_result'
+
+RESULT_INDICATORS = {
+    'total_profile_visits':                                'Profile Visits',
+    'total_messaging_connection':                          'Messages',
+    'onsite_conversion.messaging_conversation_started_7d': 'Messages',
+    'offsite_conversion.fb_pixel_purchase':                'Purchases',
+    'onsite_conversion.purchase':                          'Purchases',
+    'onsite_conversion.lead_grouped':                      'Leads',
+    'lead':                                                'Leads',
+    'like':                                                'Page Likes',
+    'landing_page_view':                                   'Landing Page Views',
+    'visit_instagram_profile':                             'Profile Visits',
+    'link_click':                                          'Link Clicks',
+    'video_view':                                          'Video Views',
+    'post_engagement':                                     'Post Engagement',
+    'page_engagement':                                     'Page Engagement',
+    'omni_add_to_cart':                                    'Add to Cart',
+    'omni_initiated_checkout':                             'Initiated Checkout',
+}
+
+OBJECTIVE_PRIORITY = {
+    'OUTCOME_TRAFFIC':    ['landing_page_view', 'visit_instagram_profile',
+                           'onsite_conversion.messaging_conversation_started_7d', 'link_click'],
+    'OUTCOME_ENGAGEMENT': ['like', 'onsite_conversion.messaging_conversation_started_7d',
+                           'video_view', 'post_engagement'],
+    'OUTCOME_LEADS':      ['onsite_conversion.lead_grouped', 'lead',
+                           'onsite_conversion.messaging_conversation_started_7d'],
+    'OUTCOME_SALES':      ['offsite_conversion.fb_pixel_purchase', 'onsite_conversion.purchase',
+                           'omni_initiated_checkout', 'omni_add_to_cart',
+                           'onsite_conversion.messaging_conversation_started_7d'],
+}
 
 SINCE = str(date.today() - timedelta(days=90))
 UNTIL = str(date.today())
@@ -78,6 +102,7 @@ UNIFIED_SCHEMA = [
     bigquery.SchemaField('awareness_campaign_spend', 'FLOAT'),   # campaign-level only
     bigquery.SchemaField('awareness_reach_camp',     'INTEGER'), # campaign-level only
     bigquery.SchemaField('results_camp',             'INTEGER'), # campaign-level only
+    bigquery.SchemaField('spend_camp',               'FLOAT'),   # campaign-level only (non-msg, non-awareness)
     bigquery.SchemaField('cost_per_result',          'FLOAT'),   # per-row smart cost
     bigquery.SchemaField('balance',                  'FLOAT'),
     bigquery.SchemaField('currency',                 'STRING'),
@@ -128,14 +153,30 @@ def parse_insights(ins, objective_raw):
         result, result_label = reach, 'Reach'
         cpr = round(spend / (reach / 1000), 2) if reach else 0.0
     else:
-        result, cpr, result_label = 0, 0.0, 'Results'
-        for at in ACTION_PRIORITY:
-            act = next((a for a in actions if a['action_type'] == at), None)
-            if act:
-                result = int(float(act['value']))
-                cost   = next((c for c in costs if c['action_type'] == at), None)
-                cpr    = round(float(cost['value']) if cost else (spend / result if result else 0), 2)
-                break
+        # Use Meta's results field (matches Ads Manager "Results" column)
+        api_results  = ins.get('results', [])
+        api_cpr_list = ins.get('cost_per_result', [])
+        if api_results:
+            r0           = api_results[0]
+            raw_val      = r0.get('values', [{}])[0].get('value', 0)
+            result       = int(float(raw_val))
+            indicator    = r0.get('indicator', '')
+            result_label = RESULT_INDICATORS.get(indicator, indicator or 'Results')
+            c0           = api_cpr_list[0] if api_cpr_list else {}
+            raw_cpr      = c0.get('values', [{}])[0].get('value', 0)
+            cpr          = round(float(raw_cpr) if raw_cpr else (spend / result if result else 0), 2)
+        else:
+            # fallback: objective-based priority
+            result, cpr, result_label = 0, 0.0, 'Results'
+            priority = OBJECTIVE_PRIORITY.get(obj, list(RESULT_INDICATORS.keys()))
+            for at in priority:
+                act = next((a for a in actions if a['action_type'] == at), None)
+                if act:
+                    result = int(float(act['value']))
+                    result_label = RESULT_INDICATORS.get(at, at)
+                    cost = next((c for c in costs if c['action_type'] == at), None)
+                    cpr  = round(float(cost['value']) if cost else (spend / result if result else 0), 2)
+                    break
 
     action_types  = {a['action_type'] for a in actions}
     has_messages  = messages > 0
@@ -275,11 +316,16 @@ def fetch_adsets_daily(account_id, since=None, until=None):
             })
         return out
     except Exception as e:
-        # Retry with shorter range if server error (too much data)
-        if since == SINCE and ('500' in str(e) or '400' in str(e)):
+        err = str(e)
+        if '500' in err or '400' in err:
             since_30 = str(date.today() - timedelta(days=30))
-            print(f'  ! adsets_daily retrying with 30 days for {account_id}')
-            return fetch_adsets_daily(account_id, since=since_30, until=until)
+            since_7  = str(date.today() - timedelta(days=7))
+            if since == SINCE:
+                print(f'  ! adsets_daily retrying with 30 days for {account_id}')
+                return fetch_adsets_daily(account_id, since=since_30, until=until)
+            elif since == since_30:
+                print(f'  ! adsets_daily retrying with 7 days for {account_id}')
+                return fetch_adsets_daily(account_id, since=since_7, until=until)
         print(f'  ! adsets_daily error for {account_id}: {e}')
         return []
 
@@ -486,6 +532,7 @@ def _unified_row(level, acc_name, row, status_map=None):
         'awareness_campaign_spend': (spend if is_awareness else 0.0)          if is_camp else 0.0,
         'awareness_reach_camp':     (reach if is_awareness else 0)            if is_camp else 0,
         'results_camp':             row.get('results', row.get('result', 0))  if is_camp else 0,
+        'spend_camp':               (spend if (not is_messages and not is_awareness) else 0.0) if is_camp else 0.0,
         # all levels → CPR formula في الجداول صح
         'awareness_spend':    spend if is_awareness else 0.0,
         'awareness_reach':    reach if is_awareness else 0,
@@ -539,7 +586,26 @@ def main():
                 'purchases':   row['purchases'],
             }, status_map=status_map))
 
-        # level=campaign
+        # level=campaign_total — aggregate rows, one per campaign, correct deduplicated reach
+        for c in campaigns:
+            rows.append(_unified_row('campaign_total', acc_name, {
+                'date':          UNTIL,
+                'campaign_id':   c['id'],
+                'campaign_name': c['name'],
+                'objective':     c['objective'],
+                'spend':         c['spend'],
+                'impressions':   c['impressions'],
+                'reach':         c['reach'],
+                'clicks':        c['clicks'],
+                'link_clicks':   c['link_clicks'],
+                'results':       c['result'],
+                'result_label':  c['result_label'],
+                'purchases':     c['purchases'],
+                'messages':      c['messages'],
+                'msg_spend':     c['msg_spend'],
+            }, status_map=status_map))
+
+        # level=campaign — daily rows for time series
         camp_daily = fetch_campaigns_daily(acc_id)
         print(f'  campaigns_daily: {len(camp_daily)} rows')
         for row in camp_daily:
