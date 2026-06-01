@@ -170,20 +170,23 @@ def parse_insights(ins, objective_raw):
     cpm_msg  = round(float(msg_cost['value']) if msg_cost else (spend/messages if messages else 0), 2)
 
     ACTION_LABELS = {
-        'onsite_conversion.messaging_conversation_started_7d': 'رسالة',
+        # indicators (results field)
+        'total_profile_visits':                                'زيارة بروفايل',
+        'total_messaging_connection':                          'رسالة',
         'offsite_conversion.fb_pixel_purchase':                'شراء',
         'onsite_conversion.purchase':                          'شراء',
         'onsite_conversion.lead_grouped':                      'ليد',
         'lead':                                                'ليد',
-        'like':                                                'لايك بيدج',
-        'landing_page_view':                                   'زيارة موقع',
-        'visit_instagram_profile':                             'زيارة بروفايل',
-        'omni_add_to_cart':                                    'أضاف للسلة',
-        'omni_initiated_checkout':                             'بدأ الشراء',
         'link_click':                                          'كليك',
+        'landing_page_view':                                   'زيارة موقع',
+        'like':                                                'لايك بيدج',
         'video_view':                                          'مشاهدة فيديو',
         'post_engagement':                                     'تفاعل بيدج',
         'page_engagement':                                     'تفاعل بيدج',
+        'visit_instagram_profile':                             'زيارة بروفايل',
+        'omni_add_to_cart':                                    'أضاف للسلة',
+        'omni_initiated_checkout':                             'بدأ الشراء',
+        'onsite_conversion.messaging_conversation_started_7d': 'رسالة',
     }
 
     if obj in AWARENESS_OBJS:
@@ -191,15 +194,18 @@ def parse_insights(ins, objective_raw):
         cpr = round(spend/(reach/1000), 2) if reach else 0
     else:
         # Use Meta's own results field (same as Ads Manager "Results" column)
-        api_results = ins.get('results', [])
+        # Structure: [{"indicator": "total_profile_visits", "values": [{"value": "670"}]}]
+        api_results  = ins.get('results', [])
         api_cpr_list = ins.get('cost_per_result', [])
         if api_results:
-            r0 = api_results[0]
-            results      = int(float(r0.get('value', 0)))
-            at           = r0.get('action_type') or r0.get('indicator', '')
-            result_label = ACTION_LABELS.get(at, at or 'نتيجة')
-            cpr_item     = api_cpr_list[0] if api_cpr_list else {}
-            cpr          = round(float(cpr_item.get('value', spend/results if results else 0)), 2)
+            r0           = api_results[0]
+            raw_val      = r0.get('values', [{}])[0].get('value', 0)
+            results      = int(float(raw_val))
+            indicator    = r0.get('indicator', '')
+            result_label = ACTION_LABELS.get(indicator, indicator or 'نتيجة')
+            c0           = api_cpr_list[0] if api_cpr_list else {}
+            raw_cpr      = c0.get('values', [{}])[0].get('value', 0)
+            cpr          = round(float(raw_cpr) if raw_cpr else (spend/results if results else 0), 2)
         else:
             # fallback: action priority by objective
             OBJECTIVE_PRIORITY = {
