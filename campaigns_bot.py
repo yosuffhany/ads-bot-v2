@@ -145,7 +145,7 @@ def get_insights(campaign_id, since, until):
         f'https://graph.facebook.com/v19.0/{campaign_id}/insights',
         {
             'time_range': f'{{"since":"{since}","until":"{until}"}}',
-            'fields':     'spend,impressions,reach,clicks,inline_link_clicks,cpm,actions,cost_per_action_type,objective,account_currency',
+            'fields':     'spend,impressions,reach,clicks,inline_link_clicks,cpm,actions,cost_per_action_type,results,cost_per_result,objective,account_currency',
             'level':      'campaign',
             'limit':      1,
         }
@@ -183,38 +183,47 @@ def parse_insights(ins, objective_raw):
         'link_click':                                          'كليك',
         'video_view':                                          'مشاهدة فيديو',
         'post_engagement':                                     'تفاعل بيدج',
-    }
-
-    # objective-based priority: each objective tries its relevant actions first
-    OBJECTIVE_PRIORITY = {
-        'OUTCOME_TRAFFIC':     ['landing_page_view', 'visit_instagram_profile',
-                                'onsite_conversion.messaging_conversation_started_7d', 'link_click'],
-        'OUTCOME_ENGAGEMENT':  ['like', 'onsite_conversion.messaging_conversation_started_7d',
-                                'video_view', 'post_engagement'],
-        'OUTCOME_LEADS':       ['onsite_conversion.lead_grouped', 'lead',
-                                'onsite_conversion.messaging_conversation_started_7d'],
-        'OUTCOME_SALES':       ['offsite_conversion.fb_pixel_purchase', 'onsite_conversion.purchase',
-                                'omni_initiated_checkout', 'omni_add_to_cart',
-                                'onsite_conversion.messaging_conversation_started_7d'],
+        'page_engagement':                                     'تفاعل بيدج',
     }
 
     if obj in AWARENESS_OBJS:
         results, result_label = reach, 'ريتش'
         cpr = round(spend/(reach/1000), 2) if reach else 0
     else:
-        results, cpr, result_label = 0, 0, 'نتيجة'
-        priority = OBJECTIVE_PRIORITY.get(obj, list(ACTION_LABELS.keys()))
-        for at in priority:
-            lbl = ACTION_LABELS.get(at)
-            if not lbl:
-                continue
-            act = next((a for a in actions if a['action_type'] == at), None)
-            if act:
-                results      = int(float(act['value']))
-                result_label = lbl
-                cost         = next((c for c in costs if c['action_type'] == at), None)
-                cpr          = round(float(cost['value']) if cost else (spend/results if results else 0), 2)
-                break
+        # Use Meta's own results field (same as Ads Manager "Results" column)
+        api_results = ins.get('results', [])
+        api_cpr_list = ins.get('cost_per_result', [])
+        if api_results:
+            r0 = api_results[0]
+            results      = int(float(r0.get('value', 0)))
+            result_label = ACTION_LABELS.get(r0.get('indicator', ''), r0.get('indicator', 'نتيجة'))
+            cpr_item     = api_cpr_list[0] if api_cpr_list else {}
+            cpr          = round(float(cpr_item.get('value', spend/results if results else 0)), 2)
+        else:
+            # fallback: action priority by objective
+            OBJECTIVE_PRIORITY = {
+                'OUTCOME_TRAFFIC':    ['landing_page_view', 'visit_instagram_profile',
+                                       'onsite_conversion.messaging_conversation_started_7d', 'link_click'],
+                'OUTCOME_ENGAGEMENT': ['like', 'onsite_conversion.messaging_conversation_started_7d',
+                                       'video_view', 'post_engagement'],
+                'OUTCOME_LEADS':      ['onsite_conversion.lead_grouped', 'lead',
+                                       'onsite_conversion.messaging_conversation_started_7d'],
+                'OUTCOME_SALES':      ['offsite_conversion.fb_pixel_purchase', 'onsite_conversion.purchase',
+                                       'omni_initiated_checkout', 'omni_add_to_cart',
+                                       'onsite_conversion.messaging_conversation_started_7d'],
+            }
+            results, cpr, result_label = 0, 0, 'نتيجة'
+            priority = OBJECTIVE_PRIORITY.get(obj, list(ACTION_LABELS.keys()))
+            for at in priority:
+                lbl = ACTION_LABELS.get(at)
+                if not lbl: continue
+                act = next((a for a in actions if a['action_type'] == at), None)
+                if act:
+                    results      = int(float(act['value']))
+                    result_label = lbl
+                    cost         = next((c for c in costs if c['action_type'] == at), None)
+                    cpr          = round(float(cost['value']) if cost else (spend/results if results else 0), 2)
+                    break
 
     cpm      = round(spend/impr*1000, 2) if impr else 0
     currency = ins.get('account_currency', 'EGP')
