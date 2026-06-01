@@ -196,7 +196,8 @@ def parse_insights(ins, objective_raw):
         if api_results:
             r0 = api_results[0]
             results      = int(float(r0.get('value', 0)))
-            result_label = ACTION_LABELS.get(r0.get('indicator', ''), r0.get('indicator', 'نتيجة'))
+            at           = r0.get('action_type') or r0.get('indicator', '')
+            result_label = ACTION_LABELS.get(at, at or 'نتيجة')
             cpr_item     = api_cpr_list[0] if api_cpr_list else {}
             cpr          = round(float(cpr_item.get('value', spend/results if results else 0)), 2)
         else:
