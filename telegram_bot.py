@@ -54,10 +54,10 @@ ACCOUNTS = [
     {'key': 'mall',     'id': 'act_2001687506868513', 'label': 'Mall',          'ar': ['مول', 'مال', 'المول']},
     {'key': 'kemet',    'id': 'act_345674018149436',  'label': 'Kemet',         'ar': ['كيميت', 'كيمت']},
     {'key': 'maspipe',  'id': 'act_1774284989787459', 'label': 'Mas-Pipe',      'ar': ['ماس بيب', 'ماسبيب', 'ماس-بيب', 'مسبيب']},
-    {'key': 'essam',    'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام']},
     {'key': 'showpink', 'id': 'act_1803969103895553', 'label': 'ShowPink',      'ar': ['شوبينك', 'شو بينك', 'شو-بينك']},
     {'key': 'belal',    'id': 'act_1091777362163635', 'label': 'Belal Khier',   'ar': ['بلال', 'بلال خير']},
     {'key': 'sedra',    'id': 'act_1303633554699002', 'label': 'Sedra',         'ar': ['سيدرا', 'سدرا', 'سدره', 'سيدره']},
+    {'key': 'essam',    'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام', 'essam']},
 ]
 
 ACCOUNTS_BY_INDEX = {i+1: a for i, a in enumerate(ACCOUNTS)}
@@ -222,22 +222,6 @@ async def test_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await check_balances(context)
     await update.message.reply_text("خلص الفحص")
 
-async def checkbal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != 932647337:
-        return
-    acc = next(a for a in ACCOUNTS if a['key'] == 'essam')
-    fields = 'balance,currency,spend_cap,amount_spent,funding_source_details,daily_spend_limit,credit_limit,min_daily_budget'
-    r = requests.get(
-        f"https://graph.facebook.com/v19.0/{acc['id']}",
-        params={'access_token': LONG_LIVED_TOKEN, 'fields': fields},
-        timeout=15
-    )
-    d = r.json()
-    lines = [f"Mohamed Essam raw fields:"]
-    for k, v in d.items():
-        lines.append(f"{k} = {v}")
-    await update.message.reply_text('\n'.join(lines)[:4000])
-
 
 async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != 932647337:
@@ -256,8 +240,6 @@ def build_app():
     app.add_handler(CommandHandler('balance', cmd_balance))
     app.add_handler(CommandHandler('myid', myid))
     app.add_handler(CommandHandler('test', test_cmd))
-    app.add_handler(CommandHandler('checkbal', checkbal_cmd))
-
     app.add_handler(CommandHandler('watched', watched_cmd))
     app.add_handler(CallbackQueryHandler(on_balance_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

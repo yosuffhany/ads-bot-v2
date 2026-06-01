@@ -32,10 +32,10 @@ ACCOUNTS = [
     {'key': 'mall',     'id': 'act_2001687506868513', 'label': 'Mall',          'ar': ['مول', 'مال', 'المول']},
     {'key': 'kemet',    'id': 'act_345674018149436',  'label': 'Kemet',         'ar': ['كيميت', 'كيمت']},
     {'key': 'maspipe',  'id': 'act_1774284989787459', 'label': 'Mas-Pipe',      'ar': ['ماس بيب', 'ماسبيب', 'ماس-بيب']},
-    {'key': 'essam',    'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام']},
     {'key': 'showpink', 'id': 'act_1803969103895553', 'label': 'ShowPink',      'ar': ['شوبينك', 'شو بينك']},
     {'key': 'belal',    'id': 'act_1091777362163635', 'label': 'Belal Khier',   'ar': ['بلال', 'بلال خير']},
     {'key': 'sedra',    'id': 'act_1303633554699002', 'label': 'Sedra',         'ar': ['سيدرا', 'سدرا', 'سدره']},
+    {'key': 'essam',    'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام', 'essam']},
 ]
 ACCOUNTS_BY_KEY = {a['key']: a for a in ACCOUNTS}
 
@@ -179,6 +179,9 @@ def parse_insights(ins, objective_raw):
         'post_engagement':                                     'تفاعل',
         'video_view':                                          'مشاهدة فيديو',
         'link_click':                                          'كليك',
+        'landing_page_view':                                   'زيارة موقع',
+        'visit_instagram_profile':                             'زيارة بروفايل',
+        'page_engagement':                                     'تفاعل بيدج',
         'omni_add_to_cart':                                    'أضاف للسلة',
         'omni_initiated_checkout':                             'بدأ الشراء',
     }
@@ -187,15 +190,17 @@ def parse_insights(ins, objective_raw):
         results, result_label = reach, 'ريتش'
         cpr = round(spend/(reach/1000), 2) if reach else 0
     else:
+        # pick action with highest value (not first match)
         results, cpr, result_label = 0, 0, 'نتيجة'
         for at, lbl in ACTION_LABELS.items():
             act = next((a for a in actions if a['action_type'] == at), None)
             if act:
-                results      = int(float(act['value']))
-                result_label = lbl
-                cost         = next((c for c in costs if c['action_type'] == at), None)
-                cpr          = round(float(cost['value']) if cost else (spend/results if results else 0), 2)
-                break
+                v = int(float(act['value']))
+                if v > results:
+                    results      = v
+                    result_label = lbl
+                    cost         = next((c for c in costs if c['action_type'] == at), None)
+                    cpr          = round(float(cost['value']) if cost else (spend/v if v else 0), 2)
 
     cpm      = round(spend/impr*1000, 2) if impr else 0
     currency = ins.get('account_currency', 'EGP')
@@ -207,7 +212,7 @@ def parse_insights(ins, objective_raw):
 def format_report(name, ins, period_label, currency='EGP'):
     m = ins
 
-    if m['messages'] > 0:
+    if m['result_label'] == 'رسالة' and m['messages'] > 0:
         res_val  = m['messages']
         res_type = "رسالة"
         cost_val = m['cpm_msg']
