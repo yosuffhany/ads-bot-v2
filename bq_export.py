@@ -536,12 +536,9 @@ def _unified_row(level, acc_name, row, status_map=None):
         # all levels → CPR formula في الجداول صح
         'awareness_spend':    spend if is_awareness else 0.0,
         'awareness_reach':    reach if is_awareness else 0,
-        # cost per result — per row
-        'cost_per_result':    round(
-            row.get('msg_spend', 0.0) / row.get('messages', 0) if is_messages and row.get('messages', 0) > 0
-            else spend / (reach / 1000) if is_awareness and reach > 0
-            else spend / row.get('results', row.get('result', 0)) if row.get('results', row.get('result', 0)) > 0
-            else 0.0, 2),
+        # cost per result — use cpr from parse_insights directly
+        # awareness → spend/(reach/1000), messages → spend/messages, others → spend/results
+        'cost_per_result':    round(float(row.get('cpr', 0.0)), 2),
         'balance':            row.get('balance', 0.0),
         'currency':           row.get('currency', ''),
     }
