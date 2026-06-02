@@ -140,9 +140,9 @@ def _load_fonts():
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
     ]:
         try:
-            _FONT_B = ImageFont.truetype(path, 18)
-            _FONT   = ImageFont.truetype(path.replace('bd','').replace('-Bold',''), 15)
-            _FONT_S = ImageFont.truetype(path.replace('bd','').replace('-Bold',''), 13)
+            _FONT_B = ImageFont.truetype(path, 24)
+            _FONT   = ImageFont.truetype(path.replace('bd','').replace('-Bold',''), 20)
+            _FONT_S = ImageFont.truetype(path.replace('bd','').replace('-Bold',''), 18)
             return
         except Exception:
             continue
@@ -155,10 +155,10 @@ def generate_ads_table(rows_data, camp_name, period_label):
     """
     _load_fonts()
     COLS   = ['', 'Ad Name', 'Results', 'Cost/result', 'Spend', 'Impressions', 'Reach']
-    WIDTHS = [68, 230, 110,  110,       90,            110,     95]
-    ROW_H  = 64
-    HEAD_H = 44
-    TITLE_H= 46
+    WIDTHS = [90, 320, 160,  160,       130,           155,     130]
+    ROW_H  = 90
+    HEAD_H = 54
+    TITLE_H= 56
     W      = sum(WIDTHS)
     H      = TITLE_H + HEAD_H + ROW_H * len(rows_data)
 
@@ -193,10 +193,24 @@ def generate_ads_table(rows_data, camp_name, period_label):
     draw.line([(0, y0+HEAD_H), (W, y0+HEAD_H)], fill=LINE, width=2)
 
     EN_LABELS = {
+        # Arabic labels
         'رسالة':'Messages','شراء':'Purchases','ليد':'Leads',
         'لايك بيدج':'Page Likes','زيارة موقع':'LP Views',
-        'زيارة بروفايل':'Profile Visits','تفاعل بيدج':'Engagement',
+        'زيارة بروفايل':'P.Visits','تفاعل بيدج':'Engagement',
         'مشاهدة فيديو':'Video Views','كليك':'Clicks','ريتش':'Reach','نتيجة':'Results',
+        # Raw indicators from Meta API
+        'total_profile_visits':'P.Visits',
+        'reach':'Reach',
+        'total_messaging_connection':'Messages',
+        'actions:onsite_conversion.messaging_conversation_started_7d':'Messages',
+        'like':'Page Likes',
+        'landing_page_view':'LP Views',
+        'post_engagement':'Engagement',
+        'video_view':'Video Views',
+        'link_click':'Clicks',
+        'lead':'Leads',
+        'offsite_conversion.fb_pixel_purchase':'Purchases',
+        'onsite_conversion.purchase':'Purchases',
     }
 
     for ri, row in enumerate(rows_data):
