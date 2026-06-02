@@ -458,10 +458,19 @@ def fetch_daily(account_id):
 # ── BIGQUERY HELPERS ──────────────────────────────────────────────────────────
 
 def get_bq_client():
-    creds = Credentials.from_service_account_file(
-        CREDENTIALS_FILE,
-        scopes=['https://www.googleapis.com/auth/bigquery']
-    )
+    import json as _json
+    # Support credentials as JSON string in env var (for Railway)
+    creds_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+    if creds_json:
+        info = _json.loads(creds_json)
+        creds = Credentials.from_service_account_info(
+            info, scopes=['https://www.googleapis.com/auth/bigquery']
+        )
+    else:
+        creds = Credentials.from_service_account_file(
+            CREDENTIALS_FILE,
+            scopes=['https://www.googleapis.com/auth/bigquery']
+        )
     return bigquery.Client(project=GCP_PROJECT, credentials=creds)
 
 def ensure_dataset(client):
