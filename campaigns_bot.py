@@ -377,7 +377,10 @@ def parse_insights(ins, objective_raw):
         'visit_instagram_profile':                             'زيارة بروفايل',
         'omni_add_to_cart':                                    'أضاف للسلة',
         'omni_initiated_checkout':                             'بدأ الشراء',
-        'onsite_conversion.messaging_conversation_started_7d': 'رسالة',
+        'onsite_conversion.messaging_conversation_started_7d':          'رسالة',
+        'actions:onsite_conversion.messaging_conversation_started_7d':   'رسالة',
+        'reach':                                                          'ريتش',
+        'page_visit_view':                                                'زيارة بيدج',
     }
 
     if obj in AWARENESS_OBJS:
