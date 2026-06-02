@@ -115,6 +115,12 @@ def fmt(n, d=0):
     if n is None: return '—'
     return f"{n:,.{d}f}" if d else f"{int(n):,}"
 
+def fmt_k(n):
+    if n is None: return '—'
+    if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
+    if n >= 1000: return f"{n/1000:.1f}K"
+    return str(int(n))
+
 def h(text):
     """Escape HTML special chars."""
     return str(text).replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
@@ -139,6 +145,30 @@ def get_campaigns(account_id):
     camps = data.get('data', [])
     camps.sort(key=lambda c: c.get('created_time', ''), reverse=True)
     return camps
+
+def get_adset_insights(campaign_id, since, until):
+    data = api_get(
+        f'https://graph.facebook.com/v19.0/{campaign_id}/insights',
+        {
+            'time_range': f'{{"since":"{since}","until":"{until}"}}',
+            'fields':     'adset_id,adset_name,spend,impressions,reach,results,cost_per_result,actions,cost_per_action_type,objective,account_currency',
+            'level':      'adset',
+            'limit':      50,
+        }
+    )
+    return data.get('data', [])
+
+def get_ad_insights(campaign_id, since, until):
+    data = api_get(
+        f'https://graph.facebook.com/v19.0/{campaign_id}/insights',
+        {
+            'time_range': f'{{"since":"{since}","until":"{until}"}}',
+            'fields':     'ad_id,ad_name,spend,impressions,reach,results,cost_per_result,actions,cost_per_action_type,objective,account_currency',
+            'level':      'ad',
+            'limit':      100,
+        }
+    )
+    return data.get('data', [])
 
 def get_insights(campaign_id, since, until):
     data = api_get(
@@ -274,6 +304,60 @@ def format_report(name, ins, period_label, currency='EGP'):
         f"👥 ريتش:       <b>{fmt(m['reach'])}</b>",
         f"📈 CPM:         <b>{fmt(m['cpm'], 2)} {currency}</b>",
     ])
+
+def _res_line(ins, currency):
+    """Return (res_val, res_type, cost_val, cost_lbl) for any ins dict."""
+    if ins['result_label'] == 'رسالة' and ins['messages'] > 0:
+        return ins['messages'], 'رسالة', ins['cpm_msg'], 'سعر الرسالة'
+    if ins['obj'] in AWARENESS_OBJS:
+        return ins['reach'], 'ريتش', ins['cpr'], 'تكلفة/1000 ريتش'
+    if ins['results'] > 0:
+        return ins['results'], ins['result_label'], ins['cpr'], 'سعر النتيجة'
+    return 0, 'نتيجة', 0, 'سعر النتيجة'
+
+def format_full_report(camp_name, ins, adsets_raw, ads_raw, period_label, currency, obj_raw):
+    m = ins
+    res_val, res_type, cost_val, cost_lbl = _res_line(m, currency)
+
+    lines = [
+        f"📊 <b>{h(camp_name)}</b>",
+        f"📅 {period_label}",
+        "─────────────────",
+        f"🎯 نتيجة: <b>{fmt(res_val)}</b>  <i>({res_type})</i>",
+        f"💵 {cost_lbl}: <b>{fmt(cost_val, 2)} {currency}</b>",
+        f"💰 إنفاق: <b>{fmt(m['spend'], 2)} {currency}</b>",
+        f"👁 <b>{fmt_k(m['impr'])}</b> إمبريشن  |  👥 <b>{fmt_k(m['reach'])}</b> ريتش",
+    ]
+
+    # ── Adsets ──
+    adsets = sorted(adsets_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:8]
+    if adsets:
+        lines.append("\n━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("📦 <b>الأد ستس</b>")
+        for row in adsets:
+            ai = parse_insights(row, row.get('objective', obj_raw))
+            if not ai or ai['spend'] == 0: continue
+            rv, rt, cv, _ = _res_line(ai, currency)
+            lines.append("┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄")
+            lines.append(f"<b>{h(row.get('adset_name','')[:35])}</b>")
+            lines.append(f"🎯 {fmt(rv)} {rt}  💰 {fmt(cv,2)} {currency}")
+            lines.append(f"💵 {fmt(ai['spend'],2)}  👁 {fmt_k(ai['impr'])}  👥 {fmt_k(ai['reach'])}")
+
+    # ── Ads ──
+    ads = sorted(ads_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:10]
+    if ads:
+        lines.append("\n━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("🖼 <b>الإعلانات</b>")
+        for row in ads:
+            ai = parse_insights(row, row.get('objective', obj_raw))
+            if not ai or ai['spend'] == 0: continue
+            rv, rt, cv, _ = _res_line(ai, currency)
+            lines.append("┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄")
+            lines.append(f"<b>{h(row.get('ad_name','')[:35])}</b>")
+            lines.append(f"🎯 {fmt(rv)} {rt}  💰 {fmt(cv,2)} {currency}")
+            lines.append(f"💵 {fmt(ai['spend'],2)}  👁 {fmt_k(ai['impr'])}  👥 {fmt_k(ai['reach'])}")
+
+    return '\n'.join(lines)
 
 # ── KEYBOARDS ─────────────────────────────────────────────────────────────────
 
@@ -418,8 +502,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             since, until, label = resolve_period(period_code)
         await query.edit_message_text("⏳ جاري جلب البيانات...")
         try:
-            ins_raw = get_insights(camp_id, since, until)
-            ins     = parse_insights(ins_raw, obj_raw or (ins_raw.get('objective','') if ins_raw else ''))
+            ins_raw    = get_insights(camp_id, since, until)
+            ins        = parse_insights(ins_raw, obj_raw or (ins_raw.get('objective','') if ins_raw else ''))
+            adsets_raw = get_adset_insights(camp_id, since, until)
+            ads_raw    = get_ad_insights(camp_id, since, until)
         except Exception as e:
             await query.edit_message_text(f"❌ خطأ: {e}")
             return
@@ -427,15 +513,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("مفيش داتا للفترة دي.")
             return
 
-        acc = ACCOUNTS_BY_KEY.get(acc_key)
+        currency = ins.get('currency', 'EGP')
         back_btn = InlineKeyboardMarkup([[
             InlineKeyboardButton("↩️ كامبين تاني", callback_data=f"per:{acc_key}:{period_code}")
         ]])
-        await query.edit_message_text(
-            format_report(camp_name, ins, label, ins.get('currency','EGP')),
-            parse_mode='HTML',
-            reply_markup=back_btn
-        )
+        text = format_full_report(camp_name, ins, adsets_raw, ads_raw, label, currency, obj_raw)
+        # Telegram max 4096 chars
+        if len(text) > 4000:
+            text = text[:4000] + '\n...'
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=back_btn)
 
     # ── custom date: start year ───────────────────────────────────────────────
     elif data.startswith('custom:'):
