@@ -38,24 +38,16 @@ async def run_app(app, name):
 
 
 async def run_bq_export_daily():
-    """Run bq_export.main() once at startup then every 24h at ~03:00 UTC."""
+    """Run bq_export.main() every 2 hours."""
     import bq_export
-    # run once immediately on startup
     while True:
-        now = datetime.now(timezone.utc)
-        # seconds until next 03:00 UTC
-        target_hour = 3
-        secs_until = ((target_hour - now.hour) % 24) * 3600 - now.minute * 60 - now.second
-        if secs_until <= 0:
-            secs_until += 86400
-        logger.info(f"[bq_export] next run in {secs_until//3600}h {(secs_until%3600)//60}m")
-        await asyncio.sleep(secs_until)
         try:
             logger.info("[bq_export] starting export...")
             await asyncio.get_event_loop().run_in_executor(None, bq_export.main)
             logger.info("[bq_export] export done")
         except Exception as e:
             logger.error(f"[bq_export] error: {e}")
+        await asyncio.sleep(7200)  # 2 hours
 
 
 async def main():
