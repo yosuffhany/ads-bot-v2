@@ -509,8 +509,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await query.edit_message_text(f"❌ خطأ: {e}")
             return
-        if not ins:
-            await query.edit_message_text("مفيش داتا للفترة دي.")
+        if not ins or ins['spend'] == 0:
+            await query.edit_message_text("مفيش داتا للفترة دي. 📭")
             return
 
         currency = ins.get('currency', 'EGP')
