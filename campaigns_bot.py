@@ -5,9 +5,11 @@ Campaigns Telegram Bot — Meta API direct
 """
 import os, re, logging
 from datetime import date, timedelta
+from io import BytesIO
 from dotenv import load_dotenv
 import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from PIL import Image, ImageDraw, ImageFont
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
     ApplicationBuilder, MessageHandler, CommandHandler,
     CallbackQueryHandler, filters, ContextTypes,
@@ -124,6 +126,95 @@ def fmt_k(n):
 def h(text):
     """Escape HTML special chars."""
     return str(text).replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
+
+# ── IMAGE CARD ────────────────────────────────────────────────────────────────
+
+_FONT_B = _FONT = _FONT_S = None
+
+def _load_fonts():
+    global _FONT_B, _FONT, _FONT_S
+    if _FONT_B: return
+    for path in [
+        'C:/Windows/Fonts/arialbd.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+    ]:
+        try:
+            _FONT_B = ImageFont.truetype(path, 18)
+            _FONT   = ImageFont.truetype(path.replace('bd','').replace('-Bold',''), 15)
+            _FONT_S = ImageFont.truetype(path.replace('bd','').replace('-Bold',''), 13)
+            return
+        except Exception:
+            continue
+    _FONT_B = _FONT = _FONT_S = ImageFont.load_default()
+
+def generate_ad_card(thumbnail_url, ad_name, metrics):
+    """Generate card: thumbnail left + metrics table right. Returns BytesIO PNG."""
+    _load_fonts()
+    CARD_W, CARD_H = 800, 280
+    PAD  = 18
+    BG   = (18, 20, 30)
+    LINE = (50, 55, 75)
+    WHITE = (255, 255, 255)
+    GRAY  = (150, 155, 175)
+
+    card = Image.new('RGB', (CARD_W, CARD_H), color=BG)
+    draw = ImageDraw.Draw(card)
+
+    # thumbnail
+    try:
+        tr = requests.get(thumbnail_url, timeout=10)
+        thumb = Image.open(BytesIO(tr.content)).convert('RGB')
+        min_d = min(thumb.size)
+        thumb = thumb.crop(((thumb.width-min_d)//2, (thumb.height-min_d)//2,
+                             (thumb.width+min_d)//2, (thumb.height+min_d)//2))
+        thumb = thumb.resize((CARD_H, CARD_H), Image.LANCZOS)
+        card.paste(thumb, (0, 0))
+    except Exception:
+        pass
+
+    draw.line([(CARD_H+1, 0), (CARD_H+1, CARD_H)], fill=LINE, width=2)
+
+    x, y = CARD_H + PAD, PAD
+    draw.text((x, y), ad_name[:40], font=_FONT_B, fill=WHITE)
+    y += 28
+    draw.line([(x, y), (CARD_W - PAD, y)], fill=LINE, width=1)
+    y += 10
+
+    COL2 = x + 130
+    ROW_H = 34
+    for label, value in metrics:
+        draw.text((x,    y+2), label, font=_FONT_S, fill=GRAY)
+        draw.text((COL2, y+2), value, font=_FONT_B,  fill=WHITE)
+        y += ROW_H
+        draw.line([(x, y-8), (CARD_W - PAD, y-8)], fill=LINE, width=1)
+
+    buf = BytesIO()
+    card.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+def fetch_ad_thumbnails(ad_ids):
+    if not ad_ids: return {}
+    try:
+        r = requests.get(
+            'https://graph.facebook.com/v19.0/',
+            params={
+                'access_token': LONG_LIVED_TOKEN,
+                'ids':    ','.join(ad_ids[:50]),
+                'fields': 'creative{thumbnail_url,image_url}',
+            },
+            timeout=20
+        )
+        out = {}
+        for ad_id, info in r.json().items():
+            c = info.get('creative', {})
+            url = c.get('thumbnail_url') or c.get('image_url', '')
+            if url: out[ad_id] = url
+        return out
+    except Exception as e:
+        logger.error(f"thumbnails error: {e}")
+        return {}
 
 # ── META API ──────────────────────────────────────────────────────────────────
 
@@ -343,20 +434,6 @@ def format_full_report(camp_name, ins, adsets_raw, ads_raw, period_label, curren
             lines.append(f"🎯 {fmt(rv)} {rt}  💰 {fmt(cv,2)} {currency}")
             lines.append(f"💵 {fmt(ai['spend'],2)}  👁 {fmt_k(ai['impr'])}  👥 {fmt_k(ai['reach'])}")
 
-    # ── Ads ──
-    ads = sorted(ads_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:10]
-    if ads:
-        lines.append("\n━━━━━━━━━━━━━━━━━━━━━")
-        lines.append("🖼 <b>الإعلانات</b>")
-        for row in ads:
-            ai = parse_insights(row, row.get('objective', obj_raw))
-            if not ai or ai['spend'] == 0: continue
-            rv, rt, cv, _ = _res_line(ai, currency)
-            lines.append("┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄")
-            lines.append(f"<b>{h(row.get('ad_name','')[:35])}</b>")
-            lines.append(f"🎯 {fmt(rv)} {rt}  💰 {fmt(cv,2)} {currency}")
-            lines.append(f"💵 {fmt(ai['spend'],2)}  👁 {fmt_k(ai['impr'])}  👥 {fmt_k(ai['reach'])}")
-
     return '\n'.join(lines)
 
 # ── KEYBOARDS ─────────────────────────────────────────────────────────────────
@@ -517,11 +594,35 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         back_btn = InlineKeyboardMarkup([[
             InlineKeyboardButton("↩️ كامبين تاني", callback_data=f"per:{acc_key}:{period_code}")
         ]])
+
+        # text report: campaign summary + adsets
         text = format_full_report(camp_name, ins, adsets_raw, ads_raw, label, currency, obj_raw)
-        # Telegram max 4096 chars
         if len(text) > 4000:
             text = text[:4000] + '\n...'
         await query.edit_message_text(text, parse_mode='HTML', reply_markup=back_btn)
+
+        # photo cards for top ads
+        ads_sorted = sorted(ads_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:8]
+        ad_ids = [r.get('ad_id', '') for r in ads_sorted if r.get('ad_id')]
+        thumbnails = fetch_ad_thumbnails(ad_ids)
+        for row in ads_sorted:
+            ai = parse_insights(row, row.get('objective', obj_raw))
+            if not ai or ai['spend'] == 0: continue
+            thumb_url = thumbnails.get(row.get('ad_id', ''))
+            if not thumb_url: continue
+            rv, rt, cv, _ = _res_line(ai, currency)
+            metrics = [
+                ('Results',      f"{fmt(rv)} {rt}"),
+                ('Cost/result',  f"{fmt(cv, 2)} {currency}"),
+                ('Spend',        f"{fmt(ai['spend'], 2)} {currency}"),
+                ('Impressions',  fmt_k(ai['impr'])),
+                ('Reach',        fmt_k(ai['reach'])),
+            ]
+            try:
+                img = generate_ad_card(thumb_url, row.get('ad_name', ''), metrics)
+                await context.bot.send_photo(chat_id=query.message.chat_id, photo=img)
+            except Exception as e:
+                logger.error(f"ad card error: {e}")
 
     # ── custom date: start year ───────────────────────────────────────────────
     elif data.startswith('custom:'):
