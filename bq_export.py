@@ -18,11 +18,15 @@ GCP_PROJECT      = os.getenv('GCP_PROJECT_ID')
 BQ_DATASET       = os.getenv('BQ_DATASET', 'meta_ads')
 
 ACCOUNTS = {
-    'Mall':    'act_2001687506868513',
-    'BSQ':     'act_841897980911694',
-    'Kemet':   'act_345674018149436',
-    'Al Adel': 'act_1392109118185589',
-    'Sedra':   'act_1303633554699002',
+    'Mall':         'act_2001687506868513',
+    'BSQ':          'act_841897980911694',
+    'Kemet':        'act_345674018149436',
+    'Al Adel':      'act_1392109118185589',
+    'Sedra':        'act_1303633554699002',
+    'Mas-Pipe':     'act_1774284989787459',
+    'ShowPink':     'act_1803969103895553',
+    'Belal Khier':  'act_1091777362163635',
+    'Mohamed Essam':'act_325431983464353',
 }
 
 AWARENESS_OBJECTIVES = {'OUTCOME_AWARENESS', 'OUTCOME_REACH', 'REACH', 'AWARENESS'}
@@ -30,22 +34,26 @@ PURCHASE_ACTIONS = {'offsite_conversion.fb_pixel_purchase', 'onsite_conversion.p
 INSIGHTS_FIELDS  = 'spend,cpm,reach,impressions,clicks,inline_link_clicks,actions,cost_per_action_type,results,cost_per_result'
 
 RESULT_INDICATORS = {
-    'total_profile_visits':                                'Profile Visits',
-    'total_messaging_connection':                          'Messages',
-    'onsite_conversion.messaging_conversation_started_7d': 'Messages',
-    'offsite_conversion.fb_pixel_purchase':                'Purchases',
-    'onsite_conversion.purchase':                          'Purchases',
-    'onsite_conversion.lead_grouped':                      'Leads',
-    'lead':                                                'Leads',
-    'like':                                                'Page Likes',
-    'landing_page_view':                                   'Landing Page Views',
-    'visit_instagram_profile':                             'Profile Visits',
-    'link_click':                                          'Link Clicks',
-    'video_view':                                          'Video Views',
-    'post_engagement':                                     'Post Engagement',
-    'page_engagement':                                     'Page Engagement',
-    'omni_add_to_cart':                                    'Add to Cart',
-    'omni_initiated_checkout':                             'Initiated Checkout',
+    # indicators returned by Meta results field
+    'reach':                                                            'Reach',
+    'total_profile_visits':                                             'Profile Visits',
+    'page_visit_view':                                                  'Page Visits',
+    'total_messaging_connection':                                       'Messages',
+    'actions:onsite_conversion.messaging_conversation_started_7d':      'Messages',
+    'onsite_conversion.messaging_conversation_started_7d':              'Messages',
+    'offsite_conversion.fb_pixel_purchase':                             'Purchases',
+    'onsite_conversion.purchase':                                       'Purchases',
+    'onsite_conversion.lead_grouped':                                   'Leads',
+    'lead':                                                             'Leads',
+    'like':                                                             'Page Likes',
+    'landing_page_view':                                                'Landing Page Views',
+    'visit_instagram_profile':                                          'Profile Visits',
+    'link_click':                                                       'Link Clicks',
+    'video_view':                                                       'Video Views',
+    'post_engagement':                                                  'Post Engagement',
+    'page_engagement':                                                  'Page Engagement',
+    'omni_add_to_cart':                                                 'Add to Cart',
+    'omni_initiated_checkout':                                          'Initiated Checkout',
 }
 
 OBJECTIVE_PRIORITY = {
