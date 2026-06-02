@@ -149,45 +149,51 @@ def _load_fonts():
     _FONT_B = _FONT = _FONT_S = ImageFont.load_default()
 
 def generate_ad_card(thumbnail_url, ad_name, metrics):
-    """Generate card: thumbnail left + metrics table right. Returns BytesIO PNG."""
+    """Generate card: header + thumbnail left + metrics table right. Returns BytesIO PNG."""
     _load_fonts()
-    CARD_W, CARD_H = 800, 280
-    PAD  = 18
-    BG   = (18, 20, 30)
-    LINE = (50, 55, 75)
-    WHITE = (255, 255, 255)
-    GRAY  = (150, 155, 175)
+    W, H     = 720, 320
+    THUMB_W  = 280
+    BG       = (18, 20, 30)
+    HDR_BG   = (28, 32, 48)
+    LINE     = (50, 55, 80)
+    WHITE    = (255, 255, 255)
+    GRAY     = (140, 145, 170)
+    GREEN    = (80, 210, 120)
+    ACCENT   = (60, 130, 220)
 
-    card = Image.new('RGB', (CARD_W, CARD_H), color=BG)
+    card = Image.new('RGB', (W, H), BG)
     draw = ImageDraw.Draw(card)
+
+    # header bar
+    draw.rectangle([0, 0, W, 44], fill=HDR_BG)
+    draw.text((12, 12), ad_name[:50], font=_FONT_B, fill=WHITE)
+    draw.line([(0, 44), (W, 44)], fill=ACCENT, width=2)
 
     # thumbnail
     try:
-        tr = requests.get(thumbnail_url, timeout=10)
+        tr    = requests.get(thumbnail_url, timeout=10)
         thumb = Image.open(BytesIO(tr.content)).convert('RGB')
-        min_d = min(thumb.size)
-        thumb = thumb.crop(((thumb.width-min_d)//2, (thumb.height-min_d)//2,
-                             (thumb.width+min_d)//2, (thumb.height+min_d)//2))
-        thumb = thumb.resize((CARD_H, CARD_H), Image.LANCZOS)
-        card.paste(thumb, (0, 0))
+        sz    = min(thumb.size)
+        thumb = thumb.crop(((thumb.width-sz)//2, (thumb.height-sz)//2,
+                             (thumb.width+sz)//2, (thumb.height+sz)//2))
+        thumb = thumb.resize((THUMB_W, H-46), Image.LANCZOS)
+        card.paste(thumb, (0, 46))
     except Exception:
         pass
 
-    draw.line([(CARD_H+1, 0), (CARD_H+1, CARD_H)], fill=LINE, width=2)
+    draw.line([(THUMB_W, 46), (THUMB_W, H)], fill=LINE, width=2)
 
-    x, y = CARD_H + PAD, PAD
-    draw.text((x, y), ad_name[:40], font=_FONT_B, fill=WHITE)
-    y += 28
-    draw.line([(x, y), (CARD_W - PAD, y)], fill=LINE, width=1)
-    y += 10
+    MX    = THUMB_W + 16
+    COL2  = THUMB_W + 190
+    ROW_H = (H - 46) // len(metrics)
 
-    COL2 = x + 130
-    ROW_H = 34
-    for label, value in metrics:
-        draw.text((x,    y+2), label, font=_FONT_S, fill=GRAY)
-        draw.text((COL2, y+2), value, font=_FONT_B,  fill=WHITE)
-        y += ROW_H
-        draw.line([(x, y-8), (CARD_W - PAD, y-8)], fill=LINE, width=1)
+    for i, (label, value) in enumerate(metrics):
+        y     = 46 + i * ROW_H
+        mid_y = y + (ROW_H - 14) // 2
+        draw.text((MX,   mid_y), label, font=_FONT_S, fill=GRAY)
+        draw.text((COL2, mid_y), value, font=_FONT_B,  fill=GREEN if i == 0 else WHITE)
+        if i < len(metrics) - 1:
+            draw.line([(MX, y+ROW_H), (W-10, y+ROW_H)], fill=LINE, width=1)
 
     buf = BytesIO()
     card.save(buf, format='PNG')
@@ -611,8 +617,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             thumb_url = thumbnails.get(row.get('ad_id', ''))
             if not thumb_url: continue
             rv, rt, cv, _ = _res_line(ai, currency)
+            EN_LABELS = {
+                'رسالة':'Messages','شراء':'Purchases','ليد':'Leads',
+                'لايك بيدج':'Page Likes','زيارة موقع':'Landing Page Views',
+                'زيارة بروفايل':'Profile Visits','تفاعل بيدج':'Post Engagement',
+                'مشاهدة فيديو':'Video Views','كليك':'Link Clicks',
+                'ريتش':'Reach','نتيجة':'Results',
+            }
+            rt_en = EN_LABELS.get(rt, rt)
             metrics = [
-                ('Results',      f"{fmt(rv)} {rt}"),
+                ('Results',      f"{fmt(rv)} {rt_en}"),
                 ('Cost/result',  f"{fmt(cv, 2)} {currency}"),
                 ('Spend',        f"{fmt(ai['spend'], 2)} {currency}"),
                 ('Impressions',  fmt_k(ai['impr'])),
