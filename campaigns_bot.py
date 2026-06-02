@@ -148,55 +148,105 @@ def _load_fonts():
             continue
     _FONT_B = _FONT = _FONT_S = ImageFont.load_default()
 
-def generate_ad_card(thumbnail_url, ad_name, metrics):
-    """Generate card: header + thumbnail left + metrics table right. Returns BytesIO PNG."""
+def generate_ads_table(rows_data, camp_name, period_label):
+    """
+    rows_data: list of {'name', 'thumb_url', 'results', 'result_type', 'cost', 'spend', 'impr', 'reach', 'currency'}
+    Returns BytesIO PNG — all ads in one image stacked vertically.
+    """
     _load_fonts()
-    W, H     = 720, 320
-    THUMB_W  = 280
-    BG       = (18, 20, 30)
-    HDR_BG   = (28, 32, 48)
-    LINE     = (50, 55, 80)
-    WHITE    = (255, 255, 255)
-    GRAY     = (140, 145, 170)
-    GREEN    = (80, 210, 120)
-    ACCENT   = (60, 130, 220)
+    COLS   = ['', 'Ad Name', 'Results', 'Cost/result', 'Spend', 'Impressions', 'Reach']
+    WIDTHS = [68, 230, 110,  110,       90,            110,     95]
+    ROW_H  = 64
+    HEAD_H = 44
+    TITLE_H= 46
+    W      = sum(WIDTHS)
+    H      = TITLE_H + HEAD_H + ROW_H * len(rows_data)
 
-    card = Image.new('RGB', (W, H), BG)
-    draw = ImageDraw.Draw(card)
+    BG      = (18, 20, 30)
+    HDR_BG  = (28, 32, 50)
+    ROW_A   = (22, 25, 38)
+    ROW_B   = (26, 30, 44)
+    LINE    = (48, 53, 76)
+    WHITE   = (255, 255, 255)
+    GRAY    = (140, 145, 170)
+    GREEN   = (80, 210, 120)
+    ACCENT  = (60, 130, 220)
 
-    # header bar
-    draw.rectangle([0, 0, W, 44], fill=HDR_BG)
-    draw.text((12, 12), ad_name[:50], font=_FONT_B, fill=WHITE)
-    draw.line([(0, 44), (W, 44)], fill=ACCENT, width=2)
+    img  = Image.new('RGB', (W, H), BG)
+    draw = ImageDraw.Draw(img)
 
-    # thumbnail
-    try:
-        tr    = requests.get(thumbnail_url, timeout=10)
-        thumb = Image.open(BytesIO(tr.content)).convert('RGB')
-        sz    = min(thumb.size)
-        thumb = thumb.crop(((thumb.width-sz)//2, (thumb.height-sz)//2,
-                             (thumb.width+sz)//2, (thumb.height+sz)//2))
-        thumb = thumb.resize((THUMB_W, H-46), Image.LANCZOS)
-        card.paste(thumb, (0, 46))
-    except Exception:
-        pass
+    # title bar
+    draw.rectangle([0, 0, W, TITLE_H], fill=HDR_BG)
+    title = f"{camp_name[:45]}  —  {period_label}"
+    draw.text((12, (TITLE_H-18)//2), title, font=_FONT_B, fill=WHITE)
+    draw.line([(0, TITLE_H), (W, TITLE_H)], fill=ACCENT, width=2)
 
-    draw.line([(THUMB_W, 46), (THUMB_W, H)], fill=LINE, width=2)
+    # column headers
+    y0 = TITLE_H
+    x  = 0
+    for col, cw in zip(COLS, WIDTHS):
+        draw.rectangle([x, y0, x+cw, y0+HEAD_H], fill=HDR_BG)
+        tw = draw.textlength(col, font=_FONT_S)
+        draw.text((x+(cw-tw)//2, y0+(HEAD_H-13)//2), col, font=_FONT_S, fill=GRAY)
+        draw.line([(x+cw, y0), (x+cw, y0+HEAD_H)], fill=LINE, width=1)
+        x += cw
+    draw.line([(0, y0+HEAD_H), (W, y0+HEAD_H)], fill=LINE, width=2)
 
-    MX    = THUMB_W + 16
-    COL2  = THUMB_W + 190
-    ROW_H = (H - 46) // len(metrics)
+    EN_LABELS = {
+        'رسالة':'Messages','شراء':'Purchases','ليد':'Leads',
+        'لايك بيدج':'Page Likes','زيارة موقع':'LP Views',
+        'زيارة بروفايل':'Profile Visits','تفاعل بيدج':'Engagement',
+        'مشاهدة فيديو':'Video Views','كليك':'Clicks','ريتش':'Reach','نتيجة':'Results',
+    }
 
-    for i, (label, value) in enumerate(metrics):
-        y     = 46 + i * ROW_H
-        mid_y = y + (ROW_H - 14) // 2
-        draw.text((MX,   mid_y), label, font=_FONT_S, fill=GRAY)
-        draw.text((COL2, mid_y), value, font=_FONT_B,  fill=GREEN if i == 0 else WHITE)
-        if i < len(metrics) - 1:
-            draw.line([(MX, y+ROW_H), (W-10, y+ROW_H)], fill=LINE, width=1)
+    for ri, row in enumerate(rows_data):
+        ry  = TITLE_H + HEAD_H + ri * ROW_H
+        bg  = ROW_A if ri % 2 == 0 else ROW_B
+        draw.rectangle([0, ry, W, ry+ROW_H], fill=bg)
+        mid = ry + (ROW_H - 14) // 2
+        x   = 0
+
+        # thumbnail
+        TH = ROW_H - 10
+        try:
+            tr    = requests.get(row['thumb_url'], timeout=8)
+            thumb = Image.open(BytesIO(tr.content)).convert('RGB')
+            sz    = min(thumb.size)
+            thumb = thumb.crop(((thumb.width-sz)//2,(thumb.height-sz)//2,
+                                 (thumb.width+sz)//2,(thumb.height+sz)//2))
+            thumb = thumb.resize((TH, TH), Image.LANCZOS)
+            img.paste(thumb, (x+(WIDTHS[0]-TH)//2, ry+5))
+        except Exception:
+            pass
+        draw.line([(x+WIDTHS[0], ry),(x+WIDTHS[0], ry+ROW_H)], fill=LINE, width=1)
+        x += WIDTHS[0]
+
+        # name
+        draw.text((x+8, mid), row['name'][:28], font=_FONT_S, fill=WHITE)
+        draw.line([(x+WIDTHS[1], ry),(x+WIDTHS[1], ry+ROW_H)], fill=LINE, width=1)
+        x += WIDTHS[1]
+
+        # results
+        rt_en = EN_LABELS.get(row['result_type'], row['result_type'])
+        res_text = f"{row['results']}  {rt_en}"
+        tw = draw.textlength(res_text, font=_FONT_B)
+        draw.text((x+(WIDTHS[2]-tw)//2, mid), res_text, font=_FONT_B, fill=GREEN)
+        draw.line([(x+WIDTHS[2], ry),(x+WIDTHS[2], ry+ROW_H)], fill=LINE, width=1)
+        x += WIDTHS[2]
+
+        # remaining cols
+        vals = [f"{row['cost']} {row['currency']}", f"{row['spend']} {row['currency']}",
+                row['impr'], row['reach']]
+        for vi, (val, cw) in enumerate(zip(vals, WIDTHS[3:])):
+            tw = draw.textlength(val, font=_FONT_S)
+            draw.text((x+(cw-tw)//2, mid), val, font=_FONT_S, fill=GRAY)
+            draw.line([(x+cw, ry),(x+cw, ry+ROW_H)], fill=LINE, width=1)
+            x += cw
+
+        draw.line([(0, ry+ROW_H),(W, ry+ROW_H)], fill=LINE, width=1)
 
     buf = BytesIO()
-    card.save(buf, format='PNG')
+    img.save(buf, format='PNG')
     buf.seek(0)
     return buf
 
@@ -607,36 +657,32 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = text[:4000] + '\n...'
         await query.edit_message_text(text, parse_mode='HTML', reply_markup=back_btn)
 
-        # photo cards for top ads
-        ads_sorted = sorted(ads_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:8]
-        ad_ids = [r.get('ad_id', '') for r in ads_sorted if r.get('ad_id')]
+        # single table image for all ads
+        ads_sorted = sorted(ads_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:10]
+        ad_ids     = [r.get('ad_id', '') for r in ads_sorted if r.get('ad_id')]
         thumbnails = fetch_ad_thumbnails(ad_ids)
+        rows_data  = []
         for row in ads_sorted:
             ai = parse_insights(row, row.get('objective', obj_raw))
             if not ai or ai['spend'] == 0: continue
-            thumb_url = thumbnails.get(row.get('ad_id', ''))
-            if not thumb_url: continue
             rv, rt, cv, _ = _res_line(ai, currency)
-            EN_LABELS = {
-                'رسالة':'Messages','شراء':'Purchases','ليد':'Leads',
-                'لايك بيدج':'Page Likes','زيارة موقع':'Landing Page Views',
-                'زيارة بروفايل':'Profile Visits','تفاعل بيدج':'Post Engagement',
-                'مشاهدة فيديو':'Video Views','كليك':'Link Clicks',
-                'ريتش':'Reach','نتيجة':'Results',
-            }
-            rt_en = EN_LABELS.get(rt, rt)
-            metrics = [
-                ('Results',      f"{fmt(rv)} {rt_en}"),
-                ('Cost/result',  f"{fmt(cv, 2)} {currency}"),
-                ('Spend',        f"{fmt(ai['spend'], 2)} {currency}"),
-                ('Impressions',  fmt_k(ai['impr'])),
-                ('Reach',        fmt_k(ai['reach'])),
-            ]
+            rows_data.append({
+                'name':        row.get('ad_name', ''),
+                'thumb_url':   thumbnails.get(row.get('ad_id', ''), ''),
+                'results':     fmt(rv),
+                'result_type': rt,
+                'cost':        fmt(cv, 2),
+                'spend':       fmt(ai['spend'], 2),
+                'impr':        fmt_k(ai['impr']),
+                'reach':       fmt_k(ai['reach']),
+                'currency':    currency,
+            })
+        if rows_data:
             try:
-                img = generate_ad_card(thumb_url, row.get('ad_name', ''), metrics)
+                img = generate_ads_table(rows_data, camp_name, label)
                 await context.bot.send_photo(chat_id=query.message.chat_id, photo=img)
             except Exception as e:
-                logger.error(f"ad card error: {e}")
+                logger.error(f"ads table error: {e}")
 
     # ── custom date: start year ───────────────────────────────────────────────
     elif data.startswith('custom:'):
