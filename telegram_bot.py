@@ -104,8 +104,8 @@ def get_balance_raw(acc):
         # try parentheses first: "Visa (EGP 997.45)"
         match = re.search(r'\(([^)]*[\d][^)]*)\)', norm)
         if not match:
-            # try without parentheses: "Fawry EGP 997.45" or "فوري: 997.45"
-            match = re.search(r'([\d]+\.[\d]+|[\d]{3,})', norm)
+            # try without parentheses: "Fawry EGP 997.45" — require decimal to avoid card numbers
+            match = re.search(r'([\d]+\.[\d]+)', norm)
         if match:
             num = re.sub(r'[^\d.]', '', match.group(1))
             try:
