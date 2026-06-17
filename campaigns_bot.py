@@ -15,6 +15,8 @@ from telegram.ext import (
     CallbackQueryHandler, filters, ContextTypes,
 )
 
+import tiktok_api as tt
+
 load_dotenv()
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -39,6 +41,9 @@ ACCOUNTS = [
     {'key': 'sedra',    'id': 'act_1303633554699002', 'label': 'Sedra',         'ar': ['سيدرا', 'سدرا', 'سدره']},
     {'key': 'essam',    'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام', 'essam']},
     {'key': 'audiopiano', 'id': 'act_290197205187544', 'label': 'Audio Piano',   'ar': ['اوديو بيانو', 'بيانو', 'audio piano']},
+    # TikTok accounts
+    {'key': 'tt_mall',  'id': '7477170011656896529', 'label': 'Mall 🎵',          'platform': 'tiktok', 'ar': ['مول تيك', 'mall tiktok']},
+    {'key': 'tt_safaa', 'id': '7647455477714042881', 'label': 'Dr.Safaa 🎵',      'platform': 'tiktok', 'ar': ['صفاء', 'دكتوره صفاء', 'safaa']},
 ]
 ACCOUNTS_BY_KEY = {a['key']: a for a in ACCOUNTS}
 
@@ -510,6 +515,41 @@ def format_full_report(camp_name, ins, adsets_raw, ads_raw, period_label, curren
 
     return '\n'.join(lines)
 
+def _format_tiktok_report(camp_name, ins, adgroups_raw, period_label, currency='USD'):
+    m = ins
+    lines = [
+        f"📊 <b>{h(camp_name)}</b>  🎵",
+        f"📅 {period_label}",
+        "─────────────────",
+        f"🎯 Result:  <b>{fmt(m['results'])}</b>  <i>({m['result_label']})</i>",
+        f"💵 Cost/Result: <b>{fmt(m['cpr'], 2)} {currency}</b>",
+        f"💰 Spend:   <b>{fmt(m['spend'], 2)} {currency}</b>",
+        f"👁 <b>{fmt_k(m['impr'])}</b> Impressions  |  👥 <b>{fmt_k(m['reach'])}</b> Reach",
+        f"📈 CPM:     <b>{fmt(m['cpm'], 2)} {currency}</b>",
+    ]
+    adgroups = sorted(adgroups_raw, key=lambda x: float(x.get('spend', 0) or 0), reverse=True)[:8]
+    if adgroups:
+        lines.append("\n━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("📦 <b>Ad Groups</b>")
+        for ag in adgroups:
+            sp  = round(float(ag.get('spend', 0) or 0), 2)
+            if sp == 0: continue
+            res = int(float(ag.get('result', 0) or 0))
+            cpr_raw = ag.get('cost_per_result', '0') or '0'
+            try:
+                cpr_v = round(float(cpr_raw), 2) if cpr_raw != '--' else (sp/res if res else 0)
+            except Exception:
+                cpr_v = 0
+            impr = int(ag.get('impressions', 0) or 0)
+            reach= int(ag.get('reach', 0) or 0)
+            name = ag.get('adgroup_name', '')[:35]
+            lines.append("┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄")
+            lines.append(f"<b>{h(name)}</b>")
+            lines.append(f"🎯 {fmt(res)}  💰 {fmt(cpr_v,2)} {currency}")
+            lines.append(f"💵 {fmt(sp,2)}  👁 {fmt_k(impr)}  👥 {fmt_k(reach)}")
+    return '\n'.join(lines)
+
+
 # ── KEYBOARDS ─────────────────────────────────────────────────────────────────
 
 def kb_accounts():
@@ -609,7 +649,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         acc = ACCOUNTS_BY_KEY[acc_key]
         await query.edit_message_text("⏳ جاري جلب الكامبينز...")
         try:
-            camps = get_campaigns(acc['id'])
+            if acc.get('platform') == 'tiktok':
+                camps = tt.get_campaigns_list(acc['id'])
+            else:
+                camps = get_campaigns(acc['id'])
         except Exception as e:
             await query.edit_message_text(f"❌ خطأ: {e}")
             return
@@ -652,11 +695,20 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             since, until, label = resolve_period(period_code)
         await query.edit_message_text("⏳ جاري جلب البيانات...")
+        acc = ACCOUNTS_BY_KEY.get(acc_key, {})
+        is_tiktok = acc.get('platform') == 'tiktok'
+
         try:
-            ins_raw    = get_insights(camp_id, since, until)
-            ins        = parse_insights(ins_raw, obj_raw or (ins_raw.get('objective','') if ins_raw else ''))
-            adsets_raw = get_adset_insights(camp_id, since, until)
-            ads_raw    = get_ad_insights(camp_id, since, until)
+            if is_tiktok:
+                metrics = tt.get_campaign_report(acc['id'], camp_id, since, until)
+                ins     = tt.parse_campaign_insights(metrics, camp.get('objective_type','') if camp else '')
+                adsets_raw = tt.get_adgroup_report(acc['id'], camp_id, since, until)
+                ads_raw    = []
+            else:
+                ins_raw    = get_insights(camp_id, since, until)
+                ins        = parse_insights(ins_raw, obj_raw or (ins_raw.get('objective','') if ins_raw else ''))
+                adsets_raw = get_adset_insights(camp_id, since, until)
+                ads_raw    = get_ad_insights(camp_id, since, until)
         except Exception as e:
             await query.edit_message_text(f"❌ خطأ: {e}")
             return
@@ -664,43 +716,48 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("مفيش داتا للفترة دي. 📭")
             return
 
-        currency = ins.get('currency', 'EGP')
+        currency = 'USD' if is_tiktok else ins.get('currency', 'EGP')
         back_btn = InlineKeyboardMarkup([[
             InlineKeyboardButton("↩️ كامبين تاني", callback_data=f"per:{acc_key}:{period_code}")
         ]])
 
-        # text report: campaign summary + adsets
-        text = format_full_report(camp_name, ins, adsets_raw, ads_raw, label, currency, obj_raw)
+        if is_tiktok:
+            # TikTok: campaign report + adgroup breakdown
+            text = _format_tiktok_report(camp_name, ins, adsets_raw, label, currency)
+        else:
+            # Meta: campaign summary + adsets
+            text = format_full_report(camp_name, ins, adsets_raw, ads_raw, label, currency, obj_raw)
         if len(text) > 4000:
             text = text[:4000] + '\n...'
         await query.edit_message_text(text, parse_mode='HTML', reply_markup=back_btn)
 
-        # single table image for all ads
-        ads_sorted = sorted(ads_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:10]
-        ad_ids     = [r.get('ad_id', '') for r in ads_sorted if r.get('ad_id')]
-        thumbnails = fetch_ad_thumbnails(ad_ids)
-        rows_data  = []
-        for row in ads_sorted:
-            ai = parse_insights(row, row.get('objective', obj_raw))
-            if not ai or ai['spend'] == 0: continue
-            rv, rt, cv, _ = _res_line(ai, currency)
-            rows_data.append({
-                'name':        row.get('ad_name', ''),
-                'thumb_url':   thumbnails.get(row.get('ad_id', ''), ''),
-                'results':     fmt(rv),
-                'result_type': rt,
-                'cost':        fmt(cv, 2),
-                'spend':       fmt(ai['spend'], 2),
-                'impr':        fmt_k(ai['impr']),
-                'reach':       fmt_k(ai['reach']),
-                'currency':    currency,
-            })
-        if rows_data:
-            try:
-                img = generate_ads_table(rows_data, camp_name, label)
-                await context.bot.send_photo(chat_id=query.message.chat_id, photo=img)
-            except Exception as e:
-                logger.error(f"ads table error: {e}")
+        # ads table image (Meta only)
+        if not is_tiktok:
+            ads_sorted = sorted(ads_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:10]
+            ad_ids     = [r.get('ad_id', '') for r in ads_sorted if r.get('ad_id')]
+            thumbnails = fetch_ad_thumbnails(ad_ids)
+            rows_data  = []
+            for row in ads_sorted:
+                ai = parse_insights(row, row.get('objective', obj_raw))
+                if not ai or ai['spend'] == 0: continue
+                rv, rt, cv, _ = _res_line(ai, currency)
+                rows_data.append({
+                    'name':        row.get('ad_name', ''),
+                    'thumb_url':   thumbnails.get(row.get('ad_id', ''), ''),
+                    'results':     fmt(rv),
+                    'result_type': rt,
+                    'cost':        fmt(cv, 2),
+                    'spend':       fmt(ai['spend'], 2),
+                    'impr':        fmt_k(ai['impr']),
+                    'reach':       fmt_k(ai['reach']),
+                    'currency':    currency,
+                })
+            if rows_data:
+                try:
+                    img = generate_ads_table(rows_data, camp_name, label)
+                    await context.bot.send_photo(chat_id=query.message.chat_id, photo=img)
+                except Exception as e:
+                    logger.error(f"ads table error: {e}")
 
     # ── custom date: start year ───────────────────────────────────────────────
     elif data.startswith('custom:'):
@@ -778,7 +835,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         label = f"{sd:02d}/{AR_MONTHS[sm-1]}/{sy} → {ed:02d}/{AR_MONTHS[em-1]}/{ey}"
         await query.edit_message_text("⏳ جاري جلب الكامبينز...")
         try:
-            camps = get_campaigns(acc['id'])
+            if acc.get('platform') == 'tiktok':
+                camps = tt.get_campaigns_list(acc['id'])
+            else:
+                camps = get_campaigns(acc['id'])
         except Exception as e:
             await query.edit_message_text(f"❌ خطأ: {e}")
             return
