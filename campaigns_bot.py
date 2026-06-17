@@ -534,12 +534,14 @@ def _format_tiktok_report(camp_name, ins, adgroups_raw, period_label, currency='
         for ag in adgroups:
             sp  = round(float(ag.get('spend', 0) or 0), 2)
             if sp == 0: continue
-            res = int(float(ag.get('result', 0) or 0))
-            cpr_raw = ag.get('cost_per_result', '0') or '0'
+            conv = int(float(ag.get('conversion', 0) or 0))
+            lp   = int(float(ag.get('total_landing_page_view', 0) or 0))
+            res  = conv if conv > 0 else lp
+            cpr_raw = ag.get('cost_per_conversion', '0') or '0'
             try:
-                cpr_v = round(float(cpr_raw), 2) if cpr_raw != '--' else (sp/res if res else 0)
+                cpr_v = round(float(cpr_raw), 2) if cpr_raw and cpr_raw != '--' else (sp/res if res else 0)
             except Exception:
-                cpr_v = 0
+                cpr_v = sp/res if res else 0
             impr = int(ag.get('impressions', 0) or 0)
             reach= int(ag.get('reach', 0) or 0)
             name = ag.get('adgroup_name', '')[:35]
@@ -734,7 +736,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("مفيش داتا للفترة دي. 📭")
             return
 
-        currency = 'USD' if is_tiktok else ins.get('currency', 'EGP')
+        currency = ins.get('currency', 'EGP')
         back_btn = InlineKeyboardMarkup([[
             InlineKeyboardButton("↩️ كامبين تاني", callback_data=f"per:{acc_key}:{period_code}")
         ]])

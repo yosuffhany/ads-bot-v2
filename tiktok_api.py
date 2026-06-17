@@ -62,6 +62,13 @@ def get_campaigns_list(advertiser_id):
         logger.error(f"TikTok campaigns_list exception {advertiser_id}: {e}")
         return []
 
+CAMPAIGN_METRICS = [
+    'campaign_name', 'spend', 'impressions', 'reach', 'clicks', 'cpm',
+    'conversion', 'cost_per_conversion',
+    'total_landing_page_view',
+    'currency',
+]
+
 def get_campaign_report(advertiser_id, campaign_id, date_start, date_end):
     """Returns raw metrics dict or None."""
     try:
@@ -73,8 +80,7 @@ def get_campaign_report(advertiser_id, campaign_id, date_start, date_end):
                 'report_type':   'BASIC',
                 'data_level':    'AUCTION_CAMPAIGN',
                 'dimensions':    json.dumps(['campaign_id']),
-                'metrics':       json.dumps(['campaign_name', 'spend', 'impressions', 'reach',
-                                             'result', 'cost_per_result', 'clicks', 'cpm']),
+                'metrics':       json.dumps(CAMPAIGN_METRICS),
                 'start_date':    date_start,
                 'end_date':      date_end,
                 'page_size':     50,
@@ -88,11 +94,16 @@ def get_campaign_report(advertiser_id, campaign_id, date_start, date_end):
         for row in d['data']['list']:
             if str(row['dimensions']['campaign_id']) == str(campaign_id):
                 return row['metrics']
-        # not found → 0-spend
         return None
     except Exception as e:
         logger.error(f"TikTok campaign_report exception: {e}")
         return None
+
+ADGROUP_METRICS = [
+    'adgroup_name', 'spend', 'impressions', 'reach',
+    'conversion', 'cost_per_conversion',
+    'total_landing_page_view',
+]
 
 def get_adgroup_report(advertiser_id, campaign_id, date_start, date_end):
     """Returns list of adgroup metrics rows."""
@@ -105,8 +116,7 @@ def get_adgroup_report(advertiser_id, campaign_id, date_start, date_end):
                 'report_type':   'BASIC',
                 'data_level':    'AUCTION_ADGROUP',
                 'dimensions':    json.dumps(['adgroup_id']),
-                'metrics':       json.dumps(['adgroup_name', 'spend', 'impressions', 'reach',
-                                             'result', 'cost_per_result']),
+                'metrics':       json.dumps(ADGROUP_METRICS),
                 'filters':       json.dumps([{'field_name': 'campaign_id', 'filter_type': 'IN',
                                               'filter_value': json.dumps([str(campaign_id)])}]),
                 'start_date':    date_start,
@@ -123,26 +133,46 @@ def get_adgroup_report(advertiser_id, campaign_id, date_start, date_end):
         logger.error(f"TikTok adgroup_report exception: {e}")
         return []
 
+def _float(v, default=0.0):
+    try:
+        return float(v) if v and v != '--' else default
+    except Exception:
+        return default
+
 def parse_campaign_insights(metrics, objective_type=''):
     """Convert raw TikTok metrics dict to same shape as Meta parse_insights output."""
     if not metrics:
         return None
-    spend   = round(float(metrics.get('spend', 0)), 2)
-    impr    = int(metrics.get('impressions', 0))
-    reach   = int(metrics.get('reach', 0))
-    clicks  = int(metrics.get('clicks', 0))
-    results = int(float(metrics.get('result', 0)))
-    cpr_raw = metrics.get('cost_per_result', '0')
-    cpr     = round(float(cpr_raw) if cpr_raw and cpr_raw != '--' else (spend / results if results else 0), 2)
-    cpm_raw = metrics.get('cpm', '0')
-    cpm     = round(float(cpm_raw) if cpm_raw and cpm_raw != '--' else (spend / impr * 1000 if impr else 0), 2)
+    spend    = round(_float(metrics.get('spend', 0)), 2)
+    impr     = int(_float(metrics.get('impressions', 0)))
+    reach    = int(_float(metrics.get('reach', 0)))
+    clicks   = int(_float(metrics.get('clicks', 0)))
+    cpm      = round(_float(metrics.get('cpm', 0)) or (spend / impr * 1000 if impr else 0), 2)
+    currency = metrics.get('currency', 'EGP')
 
-    result_label = OBJECTIVE_LABELS.get(objective_type, 'Results')
+    # pick best result metric: conversion → landing page view → clicks
+    conv   = int(_float(metrics.get('conversion', 0)))
+    lp     = int(_float(metrics.get('total_landing_page_view', 0)))
+
+    if conv > 0:
+        results      = conv
+        cpr          = round(_float(metrics.get('cost_per_conversion', 0)) or (spend / conv if conv else 0), 2)
+        result_label = OBJECTIVE_LABELS.get(objective_type, 'Conversions')
+    elif lp > 0:
+        results      = lp
+        cpr          = round(spend / lp if lp else 0, 2)
+        result_label = 'LP Views'
+    elif clicks > 0:
+        results      = clicks
+        cpr          = round(spend / clicks if clicks else 0, 2)
+        result_label = 'Clicks'
+    else:
+        results, cpr, result_label = 0, 0, OBJECTIVE_LABELS.get(objective_type, 'Results')
 
     return dict(
         spend=spend, impr=impr, reach=reach, clicks=clicks, lc=0,
         cpm=cpm, messages=0, cpm_msg=0,
         results=results, result_label=result_label, cpr=cpr,
-        obj=objective_type, currency='USD',
+        obj=objective_type, currency=currency,
         platform='tiktok',
     )
