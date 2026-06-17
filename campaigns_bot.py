@@ -751,8 +751,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ads table image
         if is_tiktok:
-            tt_ads = [r for r in ads_raw if tt._float(r.get('spend', 0)) > 0][:10]
-            rows_data = []
+            tt_ads     = [r for r in ads_raw if tt._float(r.get('spend', 0)) > 0][:10]
+            thumbnails = tt.get_ad_thumbnails(acc['id'], camp_id)
+            rows_data  = []
             for row in tt_ads:
                 conv = int(tt._float(row.get('conversion', 0)))
                 lp   = int(tt._float(row.get('total_landing_page_view', 0)))
@@ -762,12 +763,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     cv = round(float(cpr_raw), 2) if cpr_raw and cpr_raw != '--' else (tt._float(row.get('spend',0))/rv if rv else 0)
                 except Exception:
                     cv = 0
-                rt = ins['result_label']
                 rows_data.append({
                     'name':        row.get('ad_name', '')[:40],
-                    'thumb_url':   '',
+                    'thumb_url':   thumbnails.get(row.get('_ad_id', ''), ''),
                     'results':     fmt(rv),
-                    'result_type': rt,
+                    'result_type': ins['result_label'],
                     'cost':        fmt(cv, 2),
                     'spend':       fmt(round(tt._float(row.get('spend', 0)), 2), 2),
                     'impr':        fmt_k(int(tt._float(row.get('impressions', 0)))),

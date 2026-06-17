@@ -145,6 +145,46 @@ ADGROUP_METRICS = [
     'total_landing_page_view',
 ]
 
+def get_ad_thumbnails(advertiser_id, campaign_id):
+    """Returns dict {ad_id: thumbnail_url} via oEmbed."""
+    try:
+        r = requests.get(
+            f"{BASE_URL}/ad/get/",
+            headers=_headers(),
+            params={
+                'advertiser_id': advertiser_id,
+                'campaign_ids':  json.dumps([str(campaign_id)]),
+                'fields':        json.dumps(['ad_id', 'tiktok_item_id']),
+                'page_size':     50,
+            },
+            timeout=20
+        )
+        d = r.json()
+        if d.get('code') != 0:
+            return {}
+        out = {}
+        for ad in d['data']['list']:
+            ad_id   = str(ad.get('ad_id', ''))
+            item_id = ad.get('tiktok_item_id')
+            if not item_id:
+                continue
+            try:
+                oe = requests.get(
+                    'https://www.tiktok.com/oembed',
+                    params={'url': f'https://www.tiktok.com/video/{item_id}'},
+                    timeout=8
+                )
+                thumb = oe.json().get('thumbnail_url', '')
+                if thumb:
+                    out[ad_id] = thumb
+            except Exception:
+                pass
+        return out
+    except Exception as e:
+        logger.error(f"TikTok ad_thumbnails exception: {e}")
+        return {}
+
+
 def get_adgroup_report(advertiser_id, campaign_id, date_start, date_end):
     """Returns list of adgroup metrics rows."""
     try:
