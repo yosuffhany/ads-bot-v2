@@ -4,6 +4,7 @@ Ads Telegram Bot — Polling mode for Railway hosting
 - Auto alerts when watched accounts drop below 1000 or 500
 """
 import os, re, random, requests, logging, json
+from datetime import date
 from dotenv import load_dotenv
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, filters, ContextTypes
@@ -59,6 +60,9 @@ ACCOUNTS = [
     {'key': 'sedra',    'id': 'act_1303633554699002', 'label': 'Sedra',         'ar': ['سيدرا', 'سدرا', 'سدره', 'سيدره']},
     {'key': 'essam',    'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام', 'essam']},
     {'key': 'audiopiano', 'id': 'act_290197205187544', 'label': 'Audio Piano',   'ar': ['اوديو بيانو', 'بيانو', 'audio piano']},
+    # TikTok accounts
+    {'key': 'tt_mall',  'id': '7477170011656896529', 'label': 'Mall (TikTok)',      'platform': 'tiktok', 'ar': ['مول تيك', 'mall tiktok']},
+    {'key': 'tt_safaa', 'id': '7647455477714042881', 'label': 'Dr.Safaa (TikTok)', 'platform': 'tiktok', 'ar': ['صفاء', 'دكتوره صفاء', 'safaa']},
 ]
 
 ACCOUNTS_BY_INDEX = {i+1: a for i, a in enumerate(ACCOUNTS)}
@@ -76,7 +80,50 @@ def find_account(text):
                 return a
     return None
 
+def get_tiktok_spend(acc):
+    """Returns (text, spend_float) — current month spend for TikTok accounts."""
+    tok = os.getenv('TIKTOK_ACCESS_TOKEN', '')
+    if not tok:
+        return f"{acc['label']}: TIKTOK_ACCESS_TOKEN missing", None
+    today = date.today()
+    since = str(date(today.year, today.month, 1))
+    until = str(today)
+    try:
+        import json as _json
+        r = requests.get(
+            'https://business-api.tiktok.com/open_api/v1.3/report/integrated/get/',
+            headers={'Access-Token': tok},
+            params={
+                'advertiser_id': acc['id'],
+                'report_type':   'BASIC',
+                'data_level':    'AUCTION_ADVERTISER',
+                'dimensions':    _json.dumps(['advertiser_id']),
+                'metrics':       _json.dumps(['spend', 'currency']),
+                'start_date':    since,
+                'end_date':      until,
+                'page_size':     1,
+            },
+            timeout=15
+        )
+        d = r.json()
+        if d.get('code') != 0:
+            return f"{acc['label']}: خطأ — {d.get('message','')}", None
+        rows = d.get('data', {}).get('list', [])
+        if not rows:
+            return f"{acc['label']}: EGP 0.00 📊 (إنفاق الشهر)", 0.0
+        m        = rows[0]['metrics']
+        spend    = round(float(m.get('spend', 0)), 2)
+        currency = m.get('currency', 'EGP')
+        return f"{acc['label']}: {currency} {spend:,.2f} 📊 (إنفاق الشهر)", spend
+    except Exception as e:
+        logger.error(f"TikTok spend error {acc['label']}: {e}")
+        return f"{acc['label']}: خطأ في الاتصال", None
+
+
 def get_balance_raw(acc):
+    if acc.get('platform') == 'tiktok':
+        text, val = get_tiktok_spend(acc)
+        return text, val
     try:
         r = requests.get(
             f"https://graph.facebook.com/v19.0/{acc['id']}",
