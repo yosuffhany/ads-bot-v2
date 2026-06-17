@@ -99,6 +99,46 @@ def get_campaign_report(advertiser_id, campaign_id, date_start, date_end):
         logger.error(f"TikTok campaign_report exception: {e}")
         return None
 
+AD_METRICS = [
+    'ad_name', 'spend', 'impressions', 'reach',
+    'conversion', 'cost_per_conversion',
+    'total_landing_page_view', 'currency',
+]
+
+def get_ad_report(advertiser_id, campaign_id, date_start, date_end):
+    """Returns list of ad-level metrics rows sorted by spend desc."""
+    try:
+        r = requests.get(
+            f"{BASE_URL}/report/integrated/get/",
+            headers=_headers(),
+            params={
+                'advertiser_id': advertiser_id,
+                'report_type':   'BASIC',
+                'data_level':    'AUCTION_AD',
+                'dimensions':    json.dumps(['ad_id']),
+                'metrics':       json.dumps(AD_METRICS),
+                'filters':       json.dumps([{'field_name': 'campaign_id', 'filter_type': 'IN',
+                                              'filter_value': json.dumps([str(campaign_id)])}]),
+                'start_date':    date_start,
+                'end_date':      date_end,
+                'page_size':     50,
+            },
+            timeout=20
+        )
+        d = r.json()
+        if d.get('code') != 0:
+            return []
+        rows = []
+        for row in d['data']['list']:
+            m = row['metrics']
+            m['_ad_id'] = str(row['dimensions']['ad_id'])
+            rows.append(m)
+        rows.sort(key=lambda x: _float(x.get('spend', 0)), reverse=True)
+        return rows
+    except Exception as e:
+        logger.error(f"TikTok ad_report exception: {e}")
+        return []
+
 ADGROUP_METRICS = [
     'adgroup_name', 'spend', 'impressions', 'reach',
     'conversion', 'cost_per_conversion',

@@ -720,10 +720,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             if is_tiktok:
-                metrics = tt.get_campaign_report(acc['id'], camp_id, since, until)
-                ins     = tt.parse_campaign_insights(metrics, camp.get('objective_type','') if camp else '')
+                metrics    = tt.get_campaign_report(acc['id'], camp_id, since, until)
+                ins        = tt.parse_campaign_insights(metrics, camp.get('objective_type','') if camp else '')
                 adsets_raw = tt.get_adgroup_report(acc['id'], camp_id, since, until)
-                ads_raw    = []
+                ads_raw    = tt.get_ad_report(acc['id'], camp_id, since, until)
             else:
                 ins_raw    = get_insights(camp_id, since, until)
                 ins        = parse_insights(ins_raw, obj_raw or (ins_raw.get('objective','') if ins_raw else ''))
@@ -742,17 +742,45 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]])
 
         if is_tiktok:
-            # TikTok: campaign report + adgroup breakdown
             text = _format_tiktok_report(camp_name, ins, adsets_raw, label, currency)
         else:
-            # Meta: campaign summary + adsets
             text = format_full_report(camp_name, ins, adsets_raw, ads_raw, label, currency, obj_raw)
         if len(text) > 4000:
             text = text[:4000] + '\n...'
         await query.edit_message_text(text, parse_mode='HTML', reply_markup=back_btn)
 
-        # ads table image (Meta only)
-        if not is_tiktok:
+        # ads table image
+        if is_tiktok:
+            tt_ads = [r for r in ads_raw if tt._float(r.get('spend', 0)) > 0][:10]
+            rows_data = []
+            for row in tt_ads:
+                conv = int(tt._float(row.get('conversion', 0)))
+                lp   = int(tt._float(row.get('total_landing_page_view', 0)))
+                rv   = conv if conv > 0 else lp
+                cpr_raw = row.get('cost_per_conversion', '0') or '0'
+                try:
+                    cv = round(float(cpr_raw), 2) if cpr_raw and cpr_raw != '--' else (tt._float(row.get('spend',0))/rv if rv else 0)
+                except Exception:
+                    cv = 0
+                rt = ins['result_label']
+                rows_data.append({
+                    'name':        row.get('ad_name', '')[:40],
+                    'thumb_url':   '',
+                    'results':     fmt(rv),
+                    'result_type': rt,
+                    'cost':        fmt(cv, 2),
+                    'spend':       fmt(round(tt._float(row.get('spend', 0)), 2), 2),
+                    'impr':        fmt_k(int(tt._float(row.get('impressions', 0)))),
+                    'reach':       fmt_k(int(tt._float(row.get('reach', 0)))),
+                    'currency':    currency,
+                })
+            if rows_data:
+                try:
+                    img = generate_ads_table(rows_data, camp_name, label)
+                    await context.bot.send_photo(chat_id=query.message.chat_id, photo=img)
+                except Exception as e:
+                    logger.error(f"TikTok ads table error: {e}")
+        else:
             ads_sorted = sorted(ads_raw, key=lambda x: float(x.get('spend', 0)), reverse=True)[:10]
             ad_ids     = [r.get('ad_id', '') for r in ads_sorted if r.get('ad_id')]
             thumbnails = fetch_ad_thumbnails(ad_ids)
