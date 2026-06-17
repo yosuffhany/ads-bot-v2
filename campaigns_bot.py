@@ -552,16 +552,25 @@ def _format_tiktok_report(camp_name, ins, adgroups_raw, period_label, currency='
 
 # ── KEYBOARDS ─────────────────────────────────────────────────────────────────
 
-def kb_accounts():
+def kb_platform():
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("📘 Meta",    callback_data="plt:meta"),
+        InlineKeyboardButton("🎵 TikTok",  callback_data="plt:tiktok"),
+    ]])
+
+def kb_accounts(platform='meta'):
+    accs = [a for a in ACCOUNTS if (a.get('platform','meta') == platform)]
     rows = []
-    for i in range(0, len(ACCOUNTS), 3):
+    for i in range(0, len(accs), 3):
         rows.append([
             InlineKeyboardButton(a['label'], callback_data=f"acc:{a['key']}")
-            for a in ACCOUNTS[i:i+3]
+            for a in accs[i:i+3]
         ])
+    rows.append([InlineKeyboardButton("↩️ رجوع", callback_data="back:platform")])
     return InlineKeyboardMarkup(rows)
 
 def kb_periods(acc_key):
+    platform = ACCOUNTS_BY_KEY.get(acc_key, {}).get('platform', 'meta')
     rows = []
     for i in range(0, len(PERIODS), 3):
         rows.append([
@@ -569,7 +578,7 @@ def kb_periods(acc_key):
             for label, code in PERIODS[i:i+3]
         ])
     rows.append([InlineKeyboardButton("📅 تاريخ مخصص", callback_data=f"custom:{acc_key}")])
-    rows.append([InlineKeyboardButton("↩️ رجوع",        callback_data="back:accounts")])
+    rows.append([InlineKeyboardButton("↩️ رجوع",        callback_data=f"back:plt:{platform}")])
     return InlineKeyboardMarkup(rows)
 
 def kb_campaigns(acc_key, period_code, camps):
@@ -626,8 +635,8 @@ user_state = {}  # uid → {account, map}
 
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "اختار الاكونت 👇",
-        reply_markup=kb_accounts()
+        "اختار المنصة 👇",
+        reply_markup=kb_platform()
     )
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -635,8 +644,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
+    # ── platform selected ─────────────────────────────────────────────────────
+    if data.startswith('plt:'):
+        platform = data.split(':')[1]
+        label = "📘 Meta" if platform == 'meta' else "🎵 TikTok"
+        await query.edit_message_text(
+            f"{label}\n\nاختار الاكونت 👇",
+            reply_markup=kb_accounts(platform)
+        )
+
     # ── account selected ──────────────────────────────────────────────────────
-    if data.startswith('acc:'):
+    elif data.startswith('acc:'):
         acc_key = data.split(':')[1]
         await query.edit_message_text(
             f"✅ {ACCOUNTS_BY_KEY[acc_key]['label']}\n\nاختار الفترة 👇",
@@ -858,8 +876,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     # ── back buttons ──────────────────────────────────────────────────────────
-    elif data == 'back:accounts':
-        await query.edit_message_text("اختار الاكونت 👇", reply_markup=kb_accounts())
+    elif data == 'back:platform':
+        await query.edit_message_text("اختار المنصة 👇", reply_markup=kb_platform())
+
+    elif data.startswith('back:plt:'):
+        platform = data.split(':')[2]
+        label = "📘 Meta" if platform == 'meta' else "🎵 TikTok"
+        await query.edit_message_text(f"{label}\n\nاختار الاكونت 👇", reply_markup=kb_accounts(platform))
 
     elif data.startswith('back:periods:'):
         acc_key = data.split(':')[2]
