@@ -54,7 +54,6 @@ ACCOUNTS = [
     {'key': 'showpink',   'id': 'act_1803969103895553', 'label': 'ShowPink',      'ar': ['شوبينك', 'شو بينك', 'شو-بينك']},
     {'key': 'belal',      'id': 'act_1091777362163635', 'label': 'Belal Khier',   'ar': ['بلال', 'بلال خير']},
     {'key': 'sedra',      'id': 'act_1303633554699002', 'label': 'Sedra',         'ar': ['سيدرا', 'سدرا', 'سدره', 'سيدره']},
-    {'key': 'essam',      'id': 'act_325431983464353',  'label': 'Mohamed Essam', 'ar': ['محمد عصام', 'عصام', 'essam']},
     {'key': 'audiopiano', 'id': 'act_290197205187544',  'label': 'Audio Piano',   'ar': ['اوديو بيانو', 'بيانو', 'audio piano']},
     # TikTok accounts
     {'key': 'tt_mall',  'id': '7477170011656896529', 'label': 'Mall (TikTok)',      'platform': 'tiktok', 'ar': ['مول تيك', 'mall tiktok']},
