@@ -94,7 +94,7 @@ def windsor_fetch(date_preset, account_id=None):
     params = {
         'api_key':     WINDSOR_API_KEY,
         'date_preset': date_preset,
-        'fields':      'account_id,spend,clicks,impressions,reach,cpm,account_balance',
+        'fields':      'account_id,spend,clicks,impressions,reach,cpm',
         '_renderer':   'json',
     }
     if account_id:
@@ -113,15 +113,11 @@ def windsor_fetch(date_preset, account_id=None):
         for row in rows:
             aid = str(row.get('account_id', ''))
             if aid not in result:
-                result[aid] = {'spend': 0.0, 'clicks': 0, 'impressions': 0, 'reach': 0, 'cpm': 0.0, 'balance': None}
+                result[aid] = {'spend': 0.0, 'clicks': 0, 'impressions': 0, 'reach': 0, 'cpm': 0.0}
             result[aid]['spend']       += float(row.get('spend',       0) or 0)
             result[aid]['clicks']      += int(float(row.get('clicks',      0) or 0))
             result[aid]['impressions'] += int(float(row.get('impressions', 0) or 0))
             result[aid]['reach']       += int(float(row.get('reach',       0) or 0))
-            # balance is in cents → divide by 100
-            raw_bal = row.get('account_balance')
-            if raw_bal is not None:
-                result[aid]['balance'] = round(float(raw_bal) / 100, 2)
         # CPM: recalculate from totals
         for aid, d in result.items():
             if d['impressions'] > 0:
@@ -143,8 +139,8 @@ def get_windsor_account_data(acc):
     lines = [f"📊 *{acc['label']}*\n"]
 
     if d_month:
-        # Balance
-        bal = d_month.get('balance')
+        # Balance from Meta API (Windsor balance field is inaccurate)
+        _, bal = get_meta_balance_raw(acc)
         if bal is not None:
             icon = '✅' if bal > 1000 else ('⚠️' if bal > 500 else '🚨')
             lines.append(f"💳 *رصيد متبقي:* {bal:,.2f} EGP {icon}")
@@ -364,8 +360,8 @@ async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         aid   = bare_id(acc['id'])
         d     = all_data.get(aid, {})
         spend = d.get('spend', 0)
-        bal   = d.get('balance')
-        icon  = '✅' if bal and bal > 1000 else ('⚠️' if bal and bal > 500 else '🚨')
+        _, bal = get_meta_balance_raw(acc)
+        icon   = '✅' if bal and bal > 1000 else ('⚠️' if bal and bal > 500 else '🚨')
         bal_str = f"{bal:,.2f} EGP" if bal is not None else "N/A"
         lines.append(f"{icon} *{acc['label']}* — رصيد: {bal_str} | إنفاق الشهر: {spend:,.2f} EGP")
 
