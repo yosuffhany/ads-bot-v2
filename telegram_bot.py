@@ -126,30 +126,23 @@ def windsor_fetch(date_preset, account_id=None):
         return {}
 
 def get_windsor_account_data(acc):
-    """Returns formatted string with Windsor spend data for one Meta account."""
+    """Returns formatted string with balance + Windsor metrics for one Meta account."""
     aid = bare_id(acc['id'])
-    month = windsor_fetch('this_monthT', aid)
-    week  = windsor_fetch('last_7d',     aid)
-
-    d_month = month.get(aid, {})
-    d_week  = week.get(aid, {})
-
     lines = [f"📊 *{acc['label']}*\n"]
 
-    if d_month:
-        # Balance from Meta API
-        _, bal_lines = get_meta_balance_raw(acc)
-        lines.extend(bal_lines)
-        lines.append(f"📅 *إنفاق الشهر:* {d_month['spend']:,.2f} EGP")
-        lines.append(f"👁 إمبريشنز: {d_month['impressions']:,}")
-        lines.append(f"🖱 كليكات: {d_month['clicks']:,}")
-        if d_month['cpm']:
-            lines.append(f"💰 CPM: {d_month['cpm']:,.2f}")
-    else:
-        lines.append("📅 إنفاق الشهر: لا توجد بيانات")
+    # Balance — always show from Meta API
+    _, bal_lines = get_meta_balance_raw(acc)
+    lines.extend(bal_lines)
 
-    if d_week:
-        lines.append(f"\n📆 *آخر 7 أيام:* {d_week.get('spend', 0):,.2f} EGP")
+    # Windsor metrics (last 7 days)
+    week   = windsor_fetch('last_7dT')
+    d_week = week.get(aid, {})
+    if d_week and d_week.get('impressions'):
+        lines.append("")
+        lines.append(f"👁 إمبريشنز (7 أيام): {d_week['impressions']:,}")
+        lines.append(f"🖱 كليكات: {d_week['clicks']:,}")
+        if d_week.get('cpm'):
+            lines.append(f"💰 CPM: {d_week['cpm']:,.2f}")
 
     return '\n'.join(lines)
 
