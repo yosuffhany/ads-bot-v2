@@ -139,11 +139,9 @@ def get_windsor_account_data(acc):
     lines = [f"📊 *{acc['label']}*\n"]
 
     if d_month:
-        # Balance from Meta API (Windsor balance field is inaccurate)
-        _, bal = get_meta_balance_raw(acc)
-        if bal is not None:
-            icon = '✅' if bal > 1000 else ('⚠️' if bal > 500 else '🚨')
-            lines.append(f"💳 *رصيد متبقي:* {bal:,.2f} EGP {icon}")
+        # Balance from Meta API
+        _, bal_lines = get_meta_balance_raw(acc)
+        lines.extend(bal_lines)
         lines.append(f"📅 *إنفاق الشهر:* {d_month['spend']:,.2f} EGP")
         lines.append(f"👁 إمبريشنز: {d_month['impressions']:,}")
         lines.append(f"🖱 كليكات: {d_month['clicks']:,}")
@@ -201,39 +199,62 @@ def get_tiktok_spend(acc):
 # ── META BALANCE (alerts only) ────────────────────────────────────────────────
 
 def get_meta_balance_raw(acc):
-    """Used only for balance alerts — returns (display_text, float_value)."""
+    """
+    Returns (alert_value, lines_list) where:
+    - alert_value: float for threshold alerts (None if unavailable)
+    - lines_list:  list of formatted strings to display
+    """
     try:
         r = requests.get(
             f"https://graph.facebook.com/v19.0/{acc['id']}",
-            params={'access_token': LONG_LIVED_TOKEN, 'fields': 'balance,currency,funding_source_details'},
+            params={'access_token': LONG_LIVED_TOKEN,
+                    'fields': 'balance,currency,funding_source_details,amount_spent'},
             timeout=15
         )
         d = r.json()
     except Exception as e:
         logger.error(f"Meta balance error {acc['label']}: {e}")
-        return acc['label'] + ': خطأ', None
+        return None, ["💳 رصيد: خطأ في الاتصال"]
 
     if 'error' in d:
-        return acc['label'] + ': خطأ — ' + d['error'].get('message', ''), None
+        return None, [f"💳 رصيد: خطأ — {d['error'].get('message','')}"]
 
-    currency = d.get('currency', 'EGP')
-    display  = d.get('funding_source_details', {}).get('display_string', '')
-    if display:
-        ar_map = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
-        norm   = display.translate(ar_map).replace(',', '')
-        match  = re.search(r'\(([^)]*[\d][^)]*)\)', norm) or re.search(r'([\d]+\.[\d]+)', norm)
-        if match:
-            num = re.sub(r'[^\d.]', '', match.group(1))
-            try:
-                value = float(num)
-                if value > 10:
-                    return f"{acc['label']}: {currency} {value:,.2f}", value
-            except Exception:
-                pass
+    currency      = d.get('currency', 'EGP')
+    fsd           = d.get('funding_source_details', {})
+    display       = fsd.get('display_string', '')
+    coupons       = fsd.get('coupons', [])
+    bill_raw      = int(d.get('balance', 0))
+    bill_val      = round(bill_raw / 100, 2)
+    lines         = []
+    alert_value   = None
 
-    raw   = int(d.get('balance', 0))
-    value = raw / 100
-    return f"{acc['label']}: {currency} {value:,.2f}", value
+    # ── Case 1: prepaid account with balance in display_string ──
+    ar_map = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+    norm   = display.translate(ar_map).replace(',', '')
+    match  = re.search(r'\(([^)]*[\d][^)]*)\)', norm) or re.search(r'([\d]+\.[\d]+)', norm)
+    if match:
+        num = re.sub(r'[^\d.]', '', match.group(1))
+        try:
+            value = float(num)
+            if value >= 0:
+                icon = '✅' if value > 1000 else ('⚠️' if value > 500 else '🚨')
+                lines.append(f"💳 رصيد متبقي: *{value:,.2f} {currency}* {icon}")
+                alert_value = value
+        except Exception:
+            pass
+
+    # ── Case 2: postpay (credit card) — show bill due + any coupons ──
+    if not lines:
+        if bill_val > 0:
+            lines.append(f"💳 فاتورة مستحقة: *{bill_val:,.2f} {currency}*")
+        coupon_total = sum(c.get('amount', 0) for c in coupons) / 100
+        if coupon_total > 0:
+            lines.append(f"🎟 فاند/كوبون: *{coupon_total:,.2f} {currency}*")
+            alert_value = coupon_total
+        if not lines:
+            lines.append("💳 رصيد: N/A")
+
+    return alert_value, lines
 
 # ── MAIN ACCOUNT MESSAGE ──────────────────────────────────────────────────────
 
@@ -257,7 +278,7 @@ async def check_balances(context):
     bot = context.bot
     watch_accounts = [a for a in ACCOUNTS if a['key'] in WATCH_KEYS and not a.get('platform')]
     for acc in watch_accounts:
-        _, value = get_meta_balance_raw(acc)
+        value, _ = get_meta_balance_raw(acc)
         if value is None:
             continue
         key = acc['key']
@@ -360,8 +381,8 @@ async def watched_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         aid   = bare_id(acc['id'])
         d     = all_data.get(aid, {})
         spend = d.get('spend', 0)
-        _, bal = get_meta_balance_raw(acc)
-        icon   = '✅' if bal and bal > 1000 else ('⚠️' if bal and bal > 500 else '🚨')
+        bal, _ = get_meta_balance_raw(acc)
+        icon    = '✅' if bal and bal > 1000 else ('⚠️' if bal and bal > 500 else '🚨')
         bal_str = f"{bal:,.2f} EGP" if bal is not None else "N/A"
         lines.append(f"{icon} *{acc['label']}* — رصيد: {bal_str} | إنفاق الشهر: {spend:,.2f} EGP")
 
