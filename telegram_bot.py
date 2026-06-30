@@ -97,8 +97,6 @@ def windsor_fetch(date_preset, account_id=None):
         'fields':      'account_id,spend,clicks,impressions,reach,cpm',
         '_renderer':   'json',
     }
-    if account_id:
-        params['select_accounts'] = f'facebook__{account_id}'
     try:
         r = requests.get(
             'https://connectors.windsor.ai/facebook',
@@ -165,8 +163,6 @@ def windsor_fetch_tiktok(date_preset, account_id=None):
         'fields':      'account_id,spend,clicks,impressions,reach,cpm',
         '_renderer':   'json',
     }
-    if account_id:
-        params['select_accounts'] = f'tiktok__{account_id}'
     try:
         r = requests.get('https://connectors.windsor.ai/tiktok', params=params, timeout=20)
         if r.status_code != 200:
