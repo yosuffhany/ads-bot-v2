@@ -56,8 +56,9 @@ ACCOUNTS = [
     {'key': 'sedra',      'id': 'act_1303633554699002', 'label': 'Sedra',         'ar': ['سيدرا', 'سدرا', 'سدره', 'سيدره']},
     {'key': 'audiopiano', 'id': 'act_290197205187544',  'label': 'Audio Piano',   'ar': ['اوديو بيانو', 'بيانو', 'audio piano']},
     # TikTok accounts
-    {'key': 'tt_mall',  'id': '7477170011656896529', 'label': 'Mall (TikTok)',      'platform': 'tiktok', 'ar': ['مول تيك', 'mall tiktok']},
-    {'key': 'tt_safaa', 'id': '7647455477714042881', 'label': 'Dr.Safaa (TikTok)', 'platform': 'tiktok', 'ar': ['صفاء', 'دكتوره صفاء', 'safaa']},
+    {'key': 'tt_mall',    'id': '7477170011656896529', 'label': 'Mall (TikTok)',      'platform': 'tiktok', 'ar': ['مول تيك', 'mall tiktok']},
+    {'key': 'tt_safaa',   'id': '7647455477714042881', 'label': 'Dr.Safaa (TikTok)', 'platform': 'tiktok', 'ar': ['صفاء', 'دكتوره صفاء', 'safaa']},
+    {'key': 'tt_mohamed', 'id': '7594766027135434768', 'label': 'Dr.Mohamed (TikTok)', 'platform': 'tiktok', 'ar': ['دكتور محمد', 'dr mohamed', 'دكتور']},
 ]
 
 ACCOUNTS_BY_INDEX = {i+1: a for i, a in enumerate(ACCOUNTS)}
@@ -154,46 +155,63 @@ def get_windsor_account_data(acc):
 
     return '\n'.join(lines)
 
-# ── TIKTOK ───────────────────────────────────────────────────────────────────
-
-def get_tiktok_spend(acc):
-    """Returns formatted string for TikTok accounts."""
-    tok = os.getenv('TIKTOK_ACCESS_TOKEN', '')
-    if not tok:
-        return f"{acc['label']}: TIKTOK_ACCESS_TOKEN missing"
-    today = date.today()
-    since = str(date(today.year, today.month, 1))
-    until = str(today)
+def windsor_fetch_tiktok(date_preset, account_id=None):
+    """Fetch TikTok spend+performance from Windsor."""
+    if not WINDSOR_API_KEY:
+        return {}
+    params = {
+        'api_key':     WINDSOR_API_KEY,
+        'date_preset': date_preset,
+        'fields':      'account_id,spend,clicks,impressions,reach,cpm',
+        '_renderer':   'json',
+    }
+    if account_id:
+        params['select_accounts'] = f'tiktok__{account_id}'
     try:
-        import json as _json
-        r = requests.get(
-            'https://business-api.tiktok.com/open_api/v1.3/report/integrated/get/',
-            headers={'Access-Token': tok},
-            params={
-                'advertiser_id': acc['id'],
-                'report_type':   'BASIC',
-                'data_level':    'AUCTION_ADVERTISER',
-                'dimensions':    _json.dumps(['advertiser_id']),
-                'metrics':       _json.dumps(['spend', 'currency']),
-                'start_date':    since,
-                'end_date':      until,
-                'page_size':     1,
-            },
-            timeout=15
-        )
-        d = r.json()
-        if d.get('code') != 0:
-            return f"{acc['label']}: خطأ — {d.get('message','')}"
-        rows = d.get('data', {}).get('list', [])
-        if not rows:
-            return f"📊 *{acc['label']}*\n📅 إنفاق الشهر: 0.00 EGP"
-        m        = rows[0]['metrics']
-        spend    = round(float(m.get('spend', 0)), 2)
-        currency = m.get('currency', 'EGP')
-        return f"📊 *{acc['label']}*\n📅 إنفاق الشهر: {currency} {spend:,.2f}"
+        r = requests.get('https://connectors.windsor.ai/tiktok', params=params, timeout=20)
+        if r.status_code != 200:
+            return {}
+        rows = r.json().get('data', [])
+        result = {}
+        for row in rows:
+            aid = str(row.get('account_id', ''))
+            if aid not in result:
+                result[aid] = {'spend': 0.0, 'clicks': 0, 'impressions': 0, 'cpm': 0.0}
+            result[aid]['spend']       += float(row.get('spend', 0) or 0)
+            result[aid]['clicks']      += int(float(row.get('clicks', 0) or 0))
+            result[aid]['impressions'] += int(float(row.get('impressions', 0) or 0))
+            if row.get('impressions'):
+                result[aid]['cpm'] = round(result[aid]['spend'] / result[aid]['impressions'] * 1000, 2)
+        return result
     except Exception as e:
-        logger.error(f"TikTok spend error {acc['label']}: {e}")
-        return f"{acc['label']}: خطأ في الاتصال"
+        logger.error(f"Windsor TikTok error: {e}")
+        return {}
+
+def get_tiktok_windsor_data(acc):
+    """Returns formatted string for TikTok accounts using Windsor."""
+    aid = acc['id']
+    month = windsor_fetch_tiktok('this_monthT', aid)
+    week  = windsor_fetch_tiktok('last_7d',     aid)
+
+    d_month = month.get(aid, {})
+    d_week  = week.get(aid, {})
+
+    lines = [f"📊 *{acc['label']}*\n"]
+
+    if d_month:
+        lines.append(f"📅 *إنفاق الشهر:* {d_month['spend']:,.2f}")
+        lines.append(f"👁 إمبريشنز: {d_month['impressions']:,}")
+        lines.append(f"🖱 كليكات: {d_month['clicks']:,}")
+        if d_month.get('cpm'):
+            lines.append(f"💰 CPM: {d_month['cpm']:,.2f}")
+    else:
+        lines.append("📅 إنفاق الشهر: 0.00")
+
+    if d_week:
+        lines.append(f"\n📆 *آخر 7 أيام:* {d_week.get('spend', 0):,.2f}")
+
+    lines.append("\n💳 رصيد: غير متاح (TikTok postpay)")
+    return '\n'.join(lines)
 
 # ── META BALANCE (alerts only) ────────────────────────────────────────────────
 
@@ -259,7 +277,7 @@ def get_meta_balance_raw(acc):
 
 def build_account_msg(acc):
     if acc.get('platform') == 'tiktok':
-        return get_tiktok_spend(acc)
+        return get_tiktok_windsor_data(acc)
     return get_windsor_account_data(acc)
 
 # ── ACCOUNTS LIST ─────────────────────────────────────────────────────────────
