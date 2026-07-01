@@ -140,15 +140,6 @@ def get_windsor_account_data(acc):
     _, bal_lines = get_meta_balance_raw(acc)
     lines.extend(bal_lines)
 
-    # Windsor metrics (last 7 days)
-    week   = windsor_fetch('last_7dT')
-    d_week = week.get(aid, {})
-    if d_week and d_week.get('impressions'):
-        lines.append("")
-        lines.append(f"👁 إمبريشنز (7 أيام): {d_week['impressions']:,}")
-        lines.append(f"🖱 كليكات: {d_week['clicks']:,}")
-        if d_week.get('cpm'):
-            lines.append(f"💰 CPM: {d_week['cpm']:,.2f}")
 
     return '\n'.join(lines)
 
