@@ -22,6 +22,11 @@ TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_BOT_TOKEN') or os.getenv('TELEGRAM_B
 LONG_LIVED_TOKEN = os.environ.get('LONG_LIVED_TOKEN')   or os.getenv('LONG_LIVED_TOKEN')
 WINDSOR_API_KEY  = os.environ.get('WINDSOR_API_KEY')    or os.getenv('WINDSOR_API_KEY')
 
+# debug: show available env var names
+_env_keys = [k for k in os.environ if 'TOKEN' in k or 'KEY' in k or 'WINDSOR' in k]
+print(f"[DEBUG] env keys with TOKEN/KEY: {_env_keys}", flush=True)
+print(f"[DEBUG] TELEGRAM_TOKEN set: {bool(TELEGRAM_TOKEN)}", flush=True)
+
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN not set!")
 
