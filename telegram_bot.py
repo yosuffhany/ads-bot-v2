@@ -5,11 +5,12 @@ Ads Telegram Bot — Polling mode for Railway hosting
 """
 import os, re, random, requests, logging, json
 from datetime import date
+from pathlib import Path
 from dotenv import load_dotenv
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, filters, ContextTypes
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / '.env')
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

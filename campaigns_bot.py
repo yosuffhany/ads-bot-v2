@@ -6,6 +6,7 @@ Campaigns Telegram Bot — Meta API direct
 import os, re, logging
 from datetime import date, timedelta
 from io import BytesIO
+from pathlib import Path
 from dotenv import load_dotenv
 import requests
 from PIL import Image, ImageDraw, ImageFont
@@ -17,7 +18,7 @@ from telegram.ext import (
 
 import tiktok_api as tt
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / '.env')
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
